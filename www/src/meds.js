@@ -170,9 +170,29 @@ export function insulinClash(meds) {
 }
 
 // Insulin cards → the app's dose list (sorted by time of day).
+// A medicine given for a set number of days: { start: 'YYYY-MM-DD', days: 7 }. No days = ongoing.
+const dayStart = (key) => {
+  const [y, m, d] = String(key).split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+};
+export function courseEnd(m) {
+  if (!m.days || !m.start) return null;
+  const end = new Date(dayStart(m.start));
+  end.setDate(end.getDate() + Number(m.days));
+  return end.getTime(); // the first day it is no longer taken
+}
+export const medActive = (m, now = Date.now()) => !courseEnd(m) || now < courseEnd(m);
+export function daysLeft(m, now = Date.now()) {
+  const end = courseEnd(m);
+  if (!end) return null;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((end - today.getTime()) / 864e5));
+}
+
 export function insulinDoses(meds) {
   const out = [];
-  for (const m of meds.filter(isInsulin)) {
+  for (const m of meds.filter(isInsulin).filter((x) => medActive(x))) {
     const range = Number(m.range ?? 2);
     for (const x of m.times ?? []) {
       if (!(x.amount > 0) || !INSULIN_WHEN.includes(x.when)) continue;
@@ -199,7 +219,7 @@ export function insulinDoses(meds) {
 const MEAL_SLOT = { morning: 'breakfast', noon: 'lunch', evening: 'dinner', night: 'dinner' };
 export function generalTimes(meds) {
   const out = [];
-  for (const m of meds.filter((x) => !isInsulin(x))) {
+  for (const m of meds.filter((x) => !isInsulin(x) && medActive(x))) {
     for (const x of m.times ?? []) {
       if (!(x.amount > 0)) continue;
       out.push({

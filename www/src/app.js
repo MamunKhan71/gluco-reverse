@@ -30,6 +30,7 @@ import { prettyCode } from './cloud.js';
 import { bdPhone, prettyPhone } from './phone.js';
 import { reportData, reportHtml, reportSheets } from './report.js';
 import { makeXlsx } from './xlsx.js';
+import { courseEnd, medActive, daysLeft } from './meds.js';
 import { MED_TYPES, insulinWhen, GENERAL_WHEN, DEFAULT_AT, searchMeds, knownMed, isInsulin, parseDoseString, doseTimes, insulinClash, applyMeds, usePlanMeds, generalTimes, amountText } from './meds.js';
 
 // Android: if the app's data was wiped, bring it back from the backup copy before starting.
@@ -557,6 +558,7 @@ const VIEWS = {
   account: viewAccount,
   whose: viewWhose,
   take: viewTake,
+  pick: viewPick,
   ate: viewAte,
   patient: viewPatientInfo,
   mine: viewMine,
@@ -584,8 +586,14 @@ let planLoaded = false; // the family's plan has come from the cloud this sessio
 const SCROLL_BOXES = '.feed-scroll, .del-list, .scan-list, .ms-list, .wh-list';
 // soft = a background refresh (sync, timers): skipped when nothing on screen changed, so it never
 // flickers. Anything the user does always redraws.
+const dateShortBn = (ts) => new Date(ts).toLocaleDateString(getLang() === 'bn' ? 'bn-BD' : 'en-GB', { day: 'numeric', month: 'short' });
+let medsDay = '';
 function render(soft) {
   clearInterval(timerHandle);
+  if (medsDay !== dayKey(Date.now())) {
+    medsDay = dayKey(Date.now());
+    applyMeds(S.plan);
+  }
   const r = parseRoute();
   const key = `${r.name}/${r.arg ?? ''}`;
   const newPage = key !== lastRouteKey;
@@ -632,6 +640,10 @@ document.addEventListener('change', (e) => {
   const offset = Math.round((dayStartOf(0) - new Date(y, m - 1, d).getTime()) / DAY);
   doseBook = newDoseBook(Math.max(0, Math.min(60, offset)));
   render();
+});
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'pick-search') filterPick();
 });
 
 // Medicine name: refresh the suggestion cards while typing.
@@ -906,9 +918,12 @@ function alertCard(a, canAck = true) {
         ? telBtn(S.plan.doctor.phone, t('call_doctor'))
         : '';
   const ack = canAck && a.level !== 'info' ? `<button class="link" data-act="ack" data-key="${esc(a.key)}">${t('mark_handled')}</button>` : '';
+  // an emergency noted by mistake (e.g. while trying the app) can be taken back
+  const wrong = canAck && a.level === 'red' && !isCaregiver() ? `<button class="link" data-act="alert_wrong" data-key="${esc(a.key)}">${t('alert_wrong')}</button>` : '';
+  const when = a.params?.ts ? `<span class="alert-when">${t('alert_when', ago(a.params.ts))}</span>` : '';
   return `<div class="alert ${a.level}">${icon(LEVEL_ICON[a.level])}
-    <div><strong>${t(`lvl_${a.level}`)}</strong>${esc(alertText(a))}</div>
-    ${actions || ack ? `<div class="actions">${actions}${ack}</div>` : ''}
+    <div><strong>${t(`lvl_${a.level}`)}</strong>${esc(alertText(a))}${when}</div>
+    ${actions || ack ? `<div class="actions">${actions}${ack}${wrong}</div>` : ''}
   </div>`;
 }
 
@@ -1143,6 +1158,7 @@ function viewTake(slot) {
   const T = take;
   const dose = d.dose;
   let doseBlock = '';
+  let canDose = false;
   if (dose && d.doseRec) {
     const r = d.doseRec;
     doseBlock = `<div class="done-card">${icon('check')}<div><b>${r.action === 'skip' ? t('tk_dose_skipped', esc(dose.name)) : t('tk_dose_done', esc(dose.name), r.units)}</b><span>${hhmm(r.ts)}</span></div>
@@ -1156,50 +1172,63 @@ function viewTake(slot) {
       doseBlock = `<div class="alert red">${icon('alert')}<div><strong>${t('tk_low_first', recent.value)}</strong></div></div>
         <button class="btn btn-primary btn-lg" data-act="go" data-to="low">${icon('down')} ${t('low_tile')}</button>`;
     } else {
+      canDose = true;
       let units;
       let why = '';
       if (dose.kind === 'bolus') {
         const sug = suggestBolus(S.plan, slot, recent?.value ?? null, T.meal);
-        if (sug.action === 'skip') units = 0;
-        else units = sug.units;
-        why = sug.action === 'skip' ? t('tk_why_skip') : recent ? t('tk_why_reading', recent.value, hhmm(recent.ts)) : t('tk_why_none');
+        units = sug.action === 'skip' ? 0 : sug.units;
+        why = sug.action === 'skip' ? t('tk_why_skip') : recent ? t('tk_why_reading', recent.value, hhmm(recent.ts)) : '';
       } else units = doseUnits(dose);
       if (T.units == null || T.autoFor !== `${T.meal}|${units}`) {
         T.units = units;
         T.autoFor = `${T.meal}|${units}`;
       }
-      const mealSeg = dose.kind === 'bolus'
-        ? `<div class="seg tk-meal">${['normal', 'small', 'none'].map((m) => `<button class="${T.meal === m ? 'on' : ''}" data-act="tk_meal" data-v="${m}">${t(`tk_meal_${m}`)}</button>`).join('')}</div>`
+      const sugarLine = dose.kind === 'bolus'
+        ? recent
+          ? `<div class="tk-note ok">${icon('drop')} ${why}</div>`
+          : `<button class="tk-note" data-act="tk_sugar" data-slot="${slot}">${icon('drop')} <span>${t('tk_no_sugar')}</span><b>${t('tk_measure')} ›</b></button>`
         : '';
-      doseBlock = `${mealSeg}
-        <section class="card tk-dose">
-          <div class="tk-name">${icon('syringe')} ${esc(dose.name)}</div>
+      const mealSeg = dose.kind === 'bolus'
+        ? `<div class="tk-q">${t('tk_meal_q')}</div>
+           <div class="tk-meal3">${['normal', 'small', 'none'].map((m) => `<button class="${T.meal === m ? 'on' : ''}" data-act="tk_meal" data-v="${m}">${icon(m === 'normal' ? 'food' : m === 'small' ? 'minus' : 'none')}<span>${t(`tk_meal_${m}`)}</span></button>`).join('')}</div>`
+        : '';
+      doseBlock = `<section class="tk-card">
+          <div class="tk-head"><span class="tk-ic">${icon('syringe')}</span><div><b>${esc(dose.name)}</b><span>${t(dose.kind === 'bolus' ? 'tk_before_meal' : 'tk_long_acting')}</span></div></div>
           <div class="tk-units">
             <button data-act="tk_amt" data-d="-1" aria-label="−">−</button>
-            <output id="tk-units">${T.units}</output>
+            <div class="tk-u"><output id="tk-units">${T.units}</output><span>${t('units')}${T.units !== dose.base ? ` · ${t('tk_planned', dose.base)}` : ''}</span></div>
             <button data-act="tk_amt" data-d="1" aria-label="+">+</button>
           </div>
-          <div class="tk-unit-label">${t('units')}${T.units !== dose.base ? ` · ${t('tk_planned', dose.base)}` : ''}</div>
-          ${why ? `<div class="tk-why">${why}</div>` : ''}
-        </section>
-        ${dose.kind === 'bolus' && !recent ? `<button class="link" data-act="tk_sugar" data-slot="${slot}">${icon('drop')} ${t('tk_check_first')}</button>` : ''}`;
+          ${sugarLine}
+          ${mealSeg}
+        </section>`;
+      if (dose.kind === 'bolus' && T.meal === 'none') doseBlock += `<div class="tk-note">${icon('info')} ${t('tk_why_skip')}</div>`;
     }
   }
   const pending = d.meds.filter((x) => !medTaken(x));
   const medsBlock = d.meds.length
-    ? `<div class="section-title">${t('tk_meds_title')}</div><section class="card tk-meds">${d.meds
-        .map((x) => medTaken(x)
-          ? `<div class="check-row done">${icon('check')} ${esc(x.name)} · ${medLine(x)}</div>`
-          : `<label class="check-row"><input type="checkbox" data-act="tk_tab" data-id="${esc(x.medId)}|${esc(x.when)}" ${T.tabs.has(`${x.medId}|${x.when}`) ? 'checked' : ''}>${icon('pill')} ${esc(x.name)} · ${medLine(x)}</label>`)
-        .join('')}</section>`
+    ? `<div class="section-head"><span class="section-title">${t('tk_meds_title')}</span>${pending.length > 1 ? `<button class="all-at-once" data-act="tk_all">${icon('check')} ${t('tk_all_meds')}</button>` : ''}</div>
+       <div class="med-togs">${d.meds
+        .map((x) => {
+          const key = `${x.medId}|${x.when}`;
+          if (medTaken(x)) return `<div class="med-tog done"><span class="mt-ic">${icon('pill')}</span><span class="mt-body"><b>${esc(x.name)}</b><span>${medLine(x)}</span></span><span class="mt-check on">${icon('check')}</span></div>`;
+          return `<label class="med-tog"><input type="checkbox" data-act="tk_tab" data-id="${esc(key)}" ${T.tabs.has(key) ? 'checked' : ''}>
+            <span class="mt-ic">${icon('pill')}</span><span class="mt-body"><b>${esc(x.name)}</b><span>${medLine(x)}</span></span><span class="mt-check">${icon('check')}</span></label>`;
+        })
+        .join('')}</div>`
     : '';
-  const canSave = (dose && !d.doseRec && !isMissed(slot) && doseBlock.includes('tk-units')) || pending.length;
+  const canSave = canDose || pending.length;
   return `<div class="page take">${flowHead(slotName(slot))}
     ${doseBlock}
     ${medsBlock}
-    ${canSave ? `<div class="taken-at"><span>${icon('clock')} ${t('taken_at')}</span><input id="tk-at" type="time" value="${T.at}"></div>
-      <button class="btn btn-primary btn-lg" data-act="tk_save">${icon('check')} ${t('tk_save')}</button>
-      ${dose && !d.doseRec && doseBlock.includes('tk-units') ? `<button class="link" data-act="tk_skip">${t('tk_skip_dose')}</button>` : ''}` : `<button class="btn btn-primary btn-lg" data-act="home">${icon('home')} ${t('home')}</button>`}
+    ${canSave
+      ? `<div class="tk-when">${icon('clock')}<span>${t('taken_at')}</span><input id="tk-at" type="time" value="${T.at}"></div>
+        <div class="take-actions">
+          <button class="btn btn-primary btn-lg" data-act="tk_save">${icon('check')} ${t(canDose ? 'tk_save' : 'tk_save_meds')}</button>
+          ${canDose ? `<button class="link" data-act="tk_skip">${t('tk_skip_dose')}</button>` : ''}
+        </div>`
+      : `<button class="btn btn-primary btn-lg" data-act="home">${icon('home')} ${t('home')}</button>`}
   </div>`;
 }
 
@@ -1214,17 +1243,18 @@ function viewAte(slot) {
   } catch (err) {
     logError(err, 'ate menu');
   }
-  const dishList = menuDishes.length ? `<ul class="ate-menu">${dishesToItems(menuDishes).map((it) => `<li>${esc(foodName(it.id))}<small>${esc(portion(it.id))}</small></li>`).join('')}</ul>` : '';
+  const dishList = menuDishes.length ? `<ul class="ate-menu">${menuDishes.map((dd) => `<li>${esc(dishName(dd.id))}<small>${esc(dishPortion(dd))}</small></li>`).join('')}</ul>` : '';
   const insulinAsk = d.meal && !d.meal.skipped && d.dose?.kind === 'bolus' && !d.doseRec && !isMissed(slot)
     ? `<section class="card ask-card"><b>${t('tk_ask_insulin', esc(d.dose.name))}</b>
         <div class="row"><button class="btn btn-primary" data-act="go" data-to="take/${slot}">${icon('syringe')} ${t('tk_ask_yes')}</button><button class="btn" data-act="tk_skip" data-slot="${slot}">${t('tk_ask_no')}</button></div></section>`
     : '';
   if (d.meal) {
     const m = d.meal;
-    const what = m.skipped ? t('tk_no_meal') : (m.items ?? []).map((it) => foodName(it.id)).join(', ') || t('tk_ate');
+    const what = m.skipped ? t('tk_no_meal') : Object.keys(m.items ?? {}).filter((id) => id !== 'oil').map(foodName).join(', ') || t('tk_ate');
     return `<div class="page ate">${flowHead(t('tk_food_of', slotName(slot)))}
       <div class="done-card">${icon('check')}<div><b>${esc(what)}</b><span>${hhmm(m.ts)}${m.kcal ? ` · ${loc(m.kcal)} kcal` : ''}</span></div>
         <button class="link" data-act="tk_undo" data-id="${esc(m.id)}">${t('fix_mistake')}</button></div>
+      ${m.skipped ? '' : `<button class="btn btn-soft" data-act="meal_edit" data-id="${esc(m.id)}">${icon('food')} ${t('meal_edit')}</button>`}
       ${insulinAsk}
       <button class="btn btn-primary btn-lg" data-act="home">${icon('home')} ${t('home')}</button>
     </div>`;
@@ -1236,7 +1266,7 @@ function viewAte(slot) {
       : `<button class="btn btn-primary btn-lg" data-act="tk_meal_log" data-slot="${slot}" data-v="normal">${icon('check')} ${t('tk_ate_normal')}</button>`}
     <div class="ate-more">
       <button class="btn" data-act="tk_meal_log" data-slot="${slot}" data-v="small">${t('tk_ate_less')}</button>
-      <button class="btn" data-act="offplan_log" data-slot="${slot}">${t('tk_ate_other')}</button>
+      <button class="btn" data-act="go" data-to="pick/${slot}">${icon('food')} ${t('tk_ate_other')}</button>
       <button class="btn" data-act="tk_meal_log" data-slot="${slot}" data-v="none">${t('tk_ate_none')}</button>
     </div>
   </div>`;
@@ -1379,28 +1409,40 @@ function simpleSugar() {
 }
 
 // Today's times as plain rows: a big tick when done, else what is still left. One tap opens it.
+// "13:00" → "১:০০ PM" (easier to read than the 24-hour clock)
+function time12(hm) {
+  const [h, m] = String(hm).split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(getLang() === 'bn' ? 'bn-BD' : 'en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
 function todayRows() {
   const now = minOfTs(Date.now());
   const rows = DAY_SLOTS.map(dayStatus).filter((d) => d.hasMeal || d.dose || d.meds.length);
-  const pendingOf = (d) => (!d.reading && (d.dose || d.slot === 'breakfast')) || (d.dose && !d.doseRec) || d.medsDone < d.meds.length || (d.hasMeal && !d.meal);
-  // 'now' = the first unfinished time that has started (or starts within the hour)
-  const nowSlot = rows.find((d) => pendingOf(d) && minutesOf(d.time) - 60 <= now)?.slot;
+  // 'now' = the time whose turn it is on the clock (from 1 h before it until the next one's turn)
+  const current = rows.filter((d) => minutesOf(d.time) - 60 <= now).at(-1)?.slot;
   return rows
     .map((d) => {
-      const left = [
-        !d.reading && (d.dose || d.slot === 'breakfast') ? t('tk_sugar') : '',
-        d.dose && !d.doseRec ? t('ss_insulin') : '',
-        d.medsDone < d.meds.length ? t('tk_meds') : '',
-        d.hasMeal && !d.meal ? t('tk_food') : '',
+      const items = [
+        d.dose || d.slot === 'breakfast' ? [t('tk_sugar'), !!d.reading] : null,
+        d.dose ? [t('ss_insulin'), !!d.doseRec] : null,
+        d.meds.length ? [t('tk_meds'), d.medsDone === d.meds.length] : null,
+        d.hasMeal ? [t('tk_food'), !!d.meal] : null,
       ].filter(Boolean);
-      const done = !left.length;
-      const late = !done && now > minutesOf(d.time) + 60;
-      const sub = done ? t('ss_all_done') : t(late ? 'ss_left_late' : 'ss_left', left.join(', '));
-      const isNow = d.slot === nowSlot;
+      const done = items.every(([, ok]) => ok);
+      const isNow = d.slot === current && !done;
+      const late = !done && !isNow && now > minutesOf(d.time) + 60;
+      const ticks = items
+        .map(([label, ok]) => `<span class="tr-tick ${ok ? 'ok' : ''}">${ok ? icon('check') : '<i></i>'}${label}</span>`)
+        .join('');
       return `<button class="today-row ${done ? 'done' : isNow ? 'now' : late ? 'late' : ''}" data-act="tk_slot" data-slot="${d.slot}">
         <span class="tr-ic">${icon(SLOT_ICON[d.slot] ?? 'clock')}</span>
-        <span class="tr-body"><b>${slotName(d.slot)}${isNow ? ` <em class="tr-now">${t('tr_now')}</em>` : ''}</b><span>${sub}</span></span>
-        <span class="tr-end">${done ? icon('check') : `<small>${loc(d.time)}</small>`}</span>
+        <span class="tr-body">
+          <b>${slotName(d.slot)}${isNow ? ` <em class="tr-now">${t('tr_now')}</em>` : late ? ` <em class="tr-late">${t('tr_late')}</em>` : ''}</b>
+          <span class="tr-ticks">${ticks}</span>
+        </span>
+        <span class="tr-end">${done ? icon('check') : `<small>${time12(d.time)}</small>`}</span>
       </button>`;
     })
     .join('');
@@ -1478,6 +1520,79 @@ function slotSheetView() {
     <div class="wh-sheet-head"><div><b>${slotName(d.slot)}</b><span>${loc(d.time)}</span></div><button class="wh-clear" data-act="sheet_close">${t('close')}</button></div>
     <div class="ss-opts">${opts}</div>
   </div>`;
+}
+
+// === Food picker: what was eaten, by picture ==================================================
+// Home foods and the foods eaten most often come first; search by Bangla or English name.
+const FOOD_PIC = {
+  rice: '🍚', red_rice: '🍚', roti: '🥞', paratha: '🥞', oats: '🥣', chira: '🥣', muri: '🍿', potato: '🥔', sweet_potato: '🍠',
+  rui: '🐟', katla: '🐟', pangas: '🐟', tilapia: '🐟', ilish: '🐟', small_fish: '🐠', shrimp: '🦐', shutki: '🐟',
+  chicken: '🍗', egg: '🥚', beef: '🥩', mutton: '🍖',
+  dal: '🍲', mug_dal: '🍲', chola: '🍛',
+  lau: '🥒', potol: '🥒', chichinga: '🥒', dherosh: '🌶️', korola: '🥒', begun: '🍆', fulkopi: '🥦', bandhakopi: '🥬', pepe_kacha: '🥒', kumra: '🎃',
+  lal_shak: '🥬', palong: '🥬', kolmi: '🥬', pui: '🥬', salad: '🥗',
+  peyara: '🍐', apple: '🍎', malta: '🍊', jambura: '🍊', pepe_paka: '🥭', banana: '🍌', mango: '🥭', kathal: '🍈', lichu: '🍒',
+  milk: '🥛', tok_doi: '🥣', nuts: '🥜', tea_plain: '🍵', biscuit: '🍪', tea_sugar: '☕', sugar: '🧂', gur: '🟫', mishti_doi: '🍮', sweet: '🍬', oil: '🫗',
+};
+const GROUP_PIC = { carb: '🍚', fish: '🐟', meat: '🍗', dal: '🍲', veg: '🥬', fruit: '🍎', other: '🥛' };
+let pick = null; // { slot, items: {id: qty}, group: 'top' | group, q: '' }
+
+// How often each food was eaten (from the patient's own meals).
+function foodCounts() {
+  const n = {};
+  for (const m of activeLog()) if (m.type === 'meal' && m.items) for (const id of Object.keys(m.items)) n[id] = (n[id] ?? 0) + 1;
+  return n;
+}
+
+function viewPick(slot) {
+  if (!['breakfast', 'lunch', 'snack', 'dinner'].includes(slot)) return viewHome();
+  if (!pick || pick.slot !== slot) pick = { slot, items: {}, group: 'top', q: '' };
+  const P = pick;
+  const home = new Set(homeFoods() ?? DEFAULT_HOME_FOODS);
+  const counts = foodCounts();
+  const score = (f) => (home.has(f.id) ? 1000 : 0) + (counts[f.id] ?? 0) * 10 + (f.rating === 'good' ? 2 : f.rating === 'limit' ? 1 : 0);
+  const all = CATALOG.filter((f) => !f.hidden && f.id !== 'oil');
+  const shown = (P.group === 'top' ? [...all].sort((a, b) => score(b) - score(a)).slice(0, 18) : all.filter((f) => f.group === P.group));
+  const inGroup = new Set(shown.map((f) => f.id));
+  const tile = (f) => {
+    const n = P.items[f.id] ?? 0;
+    const vis = P.q ? `${f.bn} ${f.en}`.toLowerCase().includes(P.q) : inGroup.has(f.id);
+    return `<button class="ftile ${n ? 'on' : ''}" ${vis ? '' : 'hidden'} data-show="${inGroup.has(f.id) ? 1 : 0}" data-act="pick_add" data-f="${f.id}" data-name="${esc(`${f.bn} ${f.en}`.toLowerCase())}">
+      <span class="ft-pic">${FOOD_PIC[f.id] ?? GROUP_PIC[f.group] ?? '🍽️'}</span>
+      <b>${esc(f[getLang()])}</b><small>${esc(f.portion[getLang()])}</small>
+      ${n ? `<span class="ft-n">${fmtQty(n)}</span><span class="ft-minus" data-act="pick_minus" data-f="${f.id}" role="button" aria-label="−">${icon('minus')}</span>` : ''}
+      ${f.rating === 'avoid' ? '<span class="ft-warn"></span>' : ''}
+    </button>`;
+  };
+  const chips = [['top', '⭐', t('pick_top')], ...GROUPS.map((g) => [g, GROUP_PIC[g], t(`pick_${g}`)])]
+    .map(([g, pic, label]) => `<button class="pchip ${P.group === g ? 'on' : ''}" data-act="pick_group" data-g="${g}"><span>${pic}</span>${label}</button>`)
+    .join('');
+  const tot = mealTotals(P.items);
+  const count = Object.values(P.items).filter((q) => q > 0).length;
+  return `<div class="page pick">${flowHead(t('tk_food_of', slotName(slot)))}
+    <label class="psearch">${icon('search')}<input id="pick-search" type="search" placeholder="${t('pick_search')}" value="${esc(P.q)}" autocomplete="off"></label>
+    <div class="pchips">${chips}</div>
+    <div class="ftiles" id="ftiles">${[...shown, ...all.filter((f) => !inGroup.has(f.id))].map(tile).join('')}</div>
+    <p class="pick-none" id="pick-none" hidden>${t('pick_none')}</p>
+    <div class="pick-bar">
+      <div><b>${count ? t('pick_count', loc(count)) : t('pick_hint')}</b><span>${count ? `~${loc(tot.kcal)} kcal` : ''}</span></div>
+      <button class="btn btn-primary" data-act="pick_save" ${count ? '' : 'disabled'}>${icon('check')} ${t('save')}</button>
+    </div>
+  </div>`;
+}
+
+// Search without redrawing (keeps the keyboard open).
+function filterPick() {
+  const q = (document.getElementById('pick-search')?.value ?? '').trim().toLowerCase();
+  if (pick) pick.q = q;
+  let any = 0;
+  for (const el of $app.querySelectorAll('.ftile')) {
+    const hit = q ? el.dataset.name.includes(q) : el.dataset.show === '1';
+    el.hidden = !hit;
+    if (hit) any++;
+  }
+  const none = document.getElementById('pick-none');
+  if (none) none.hidden = any > 0;
 }
 
 function readTake() {
@@ -1997,10 +2112,10 @@ async function importMeterPending() {
     if (rec.type === 'meal' && rec.fromReminder && !rec.items) {
       // "Ate it" pressed on the meal reminder: that day's menu
       try {
-        rec.items = homeFoods() ? dishesToItems(currentMenu(0).menu.meals[rec.slot] ?? []) : [];
+        rec.items = homeFoods() ? dishesToItems(currentMenu(0).menu.meals[rec.slot] ?? []) : {};
         Object.assign(rec, mealTotals(rec.items));
       } catch {
-        rec.items = [];
+        rec.items = {};
       }
       if (mealToday(rec.slot)) {
         persist({ ...rec, deleted: true, duplicate: true });
@@ -2384,9 +2499,17 @@ function medCard(m) {
     .filter((x) => x.amount > 0)
     .map((x) => `<li><b>${isInsulin(m) && x.when === 'night' ? t('when_ins_night') : isInsulin(m) && m.insulinKind === 'basal' && x.when === 'breakfast' ? t('when_basal_morning') : whenText(x.when)}</b><span>${medLine({ ...x, type: m.type })}</span><time>${loc(x.at || DEFAULT_AT[x.when])}</time></li>`)
     .join('');
-  return `<button class="med-card" data-act="go" data-to="med/${esc(m.id)}">
+  const left = daysLeft(m);
+  const done = !medActive(m);
+  const taken = done ? S.log.filter((e) => !e.deleted && (e.med === m.id || e.medId === m.id) && e.action !== 'skip').length : 0;
+  const course = !courseEnd(m)
+    ? ''
+    : done
+      ? `<span class="course-badge done">${icon('check')} ${t('course_done', dateShortBn(courseEnd(m) - 864e5), loc(taken))}</span>`
+      : `<span class="course-badge">${icon('calendar')} ${t('course_left', loc(left), loc(m.days))}</span>`;
+  return `<button class="med-card ${done ? 'finished' : ''}" data-act="go" data-to="med/${esc(m.id)}">
     <span class="med-ic ${m.type}">${icon(MED_ICON[m.type])}</span>
-    <span class="med-body"><b>${esc(m.name)}${m.strength ? ` <small>${esc(m.strength)}</small>` : ''}</b>
+    <span class="med-body"><b>${esc(m.name)}${m.strength ? ` <small>${esc(m.strength)}</small>` : ''}</b>${course}
       <span class="med-type">${t(`type_${m.type}`)}${isInsulin(m) && m.insulinKind ? ` · ${t(`kind_${m.insulinKind}`)}` : ''}</span>
       <ul class="med-times">${times}</ul>${m.note ? `<span class="med-note">${esc(m.note)}</span>` : ''}</span>
     ${icon('chev')}</button>`;
@@ -2398,7 +2521,8 @@ function viewMeds() {
   return `<div class="page">${pageHead(t('meds_title'))}
     <p class="muted">${t(isCaregiver() ? 'meds_sub_cg' : 'meds_sub')}</p>
     ${legacy ? `<div class="alert info">${icon('info')}<div>${t('meds_legacy')}</div></div>` : ''}
-    ${meds.length ? `<div class="med-list">${meds.map(medCard).join('')}</div>` : `<section class="card center med-empty"><span class="bubble">${icon('pill')}</span><p>${t('meds_empty')}</p></section>`}
+    ${meds.length ? `<div class="med-list">${meds.filter((m) => medActive(m)).map(medCard).join('')}</div>` : `<section class="card center med-empty"><span class="bubble">${icon('pill')}</span><p>${t('meds_empty')}</p></section>`}
+    ${meds.some((m) => !medActive(m)) ? `<div class="section-title">${t('course_finished_title')}</div><p class="small muted">${t('course_finished_sub')}</p><div class="med-list">${meds.filter((m) => !medActive(m)).map(medCard).join('')}</div>` : ''}
     <button class="btn btn-primary btn-lg" data-act="go" data-to="med/new">${icon('plus')} ${t('med_add')}</button>
   </div>`;
 }
@@ -2475,6 +2599,14 @@ function viewMedEdit(id) {
       <label class="field">${t('med_note')}<input id="med-note" value="${esc(d.note ?? '')}" placeholder="${t('med_note_ph')}"></label>
     </section>
 
+    <div class="section-title">${t('course_q')}</div>
+    <section class="card">
+      <div class="course-chips">${[0, 5, 7, 10, 14, 30].map((n) => `<button class="${(d.days ?? 0) === n ? 'on' : ''}" data-act="med_days" data-v="${n}">${n ? t('course_n', loc(n)) : t('course_ongoing')}</button>`).join('')}</div>
+      ${d.days ? `<label class="field course-start">${t('course_start')}<input id="med-start" type="date" value="${esc(d.start ?? dayKey(Date.now()))}"></label>
+        <p class="small muted">${medActive(d) ? t('course_until', dateShortBn(courseEnd({ ...d, start: d.start ?? dayKey(Date.now()) }) - 864e5)) : t('course_over_note')}</p>` : ''}
+      ${d.days && !medActive(d) ? `<button class="btn btn-soft" data-act="med_restart">${icon('refresh')} ${t('course_restart')}</button>` : ''}
+    </section>
+
     <button class="btn btn-primary btn-lg" data-act="med_save">${icon('check')} ${t('save')}</button>
     <button class="btn" style="margin-top:10px" data-act="med_cancel">${t('cancel')}</button>
     ${exists ? `<button class="btn btn-outline-danger" style="margin-top:18px" data-act="med_delete">${icon('trash')} ${t('med_delete')}</button>` : ''}
@@ -2489,6 +2621,7 @@ function readMedForm() {
   if (v('med-name') != null) d.name = v('med-name').trim();
   if (v('med-strength') != null) d.strength = v('med-strength').trim();
   if (v('med-note') != null) d.note = v('med-note').trim();
+  if (v('med-start')) d.start = v('med-start');
   for (const el of $app.querySelectorAll('[data-med-at]')) {
     const x = d.times.find((y) => y.when === el.dataset.medAt);
     if (x) x.at = el.value;
@@ -4608,6 +4741,15 @@ const ACTIONS = {
     save(S);
     scheduleReminders().then(() => toast && render());
   },
+  alert_wrong: (el) => {
+    const id = String(el.dataset.key).replace(/^red:/, '');
+    const rec = S.log.find((e) => e.id === id);
+    if (!rec || !confirm(t('alert_wrong_q'))) return;
+    rec.deleted = true;
+    persist(rec);
+    toast = t('alert_removed');
+    render();
+  },
   ack: (el) => {
     S.state.acked = [...(S.state.acked ?? []), el.dataset.key];
     saveState();
@@ -4927,6 +5069,40 @@ const ACTIONS = {
     go('home');
   },
   role_patient: () => startPatientFamily(),
+  pick_add: (el) => {
+    pick.items[el.dataset.f] = Math.round(((pick.items[el.dataset.f] ?? 0) + 1) * 10) / 10;
+    native.haptic?.();
+    render();
+  },
+  pick_minus: (el) => {
+    const n = (pick.items[el.dataset.f] ?? 0) - 1;
+    if (n > 0) pick.items[el.dataset.f] = n;
+    else delete pick.items[el.dataset.f];
+    render();
+  },
+  pick_group: (el) => {
+    pick.group = el.dataset.g;
+    pick.q = '';
+    render();
+  },
+  meal_edit: (el) => {
+    const m = S.log.find((e) => e.id === el.dataset.id);
+    if (!m) return;
+    pick = { slot: m.slot, items: { ...(m.items ?? {}) }, group: 'top', q: '', editId: m.id };
+    delete pick.items.oil;
+    go(`pick/${m.slot}`);
+  },
+  pick_save: () => {
+    const items = Object.fromEntries(Object.entries(pick.items).filter(([, q]) => q > 0));
+    if (!Object.keys(items).length) return;
+    const old = pick.editId && S.log.find((e) => e.id === pick.editId);
+    if (old) persist({ ...old, items, ...mealTotals(items), size: 'custom', updatedAt: Date.now() });
+    else persist({ type: 'meal', slot: pick.slot, items, ...mealTotals(items), size: 'custom' });
+    pick = null;
+    native.haptic('MEDIUM');
+    toast = t('saved');
+    go('home');
+  },
   tk_slot: (el) => {
     slotSheet = el.dataset.slot;
     render();
@@ -4978,6 +5154,12 @@ const ACTIONS = {
   tk_tab: (el) => {
     if (el.checked) take.tabs.add(el.dataset.id);
     else take.tabs.delete(el.dataset.id);
+  },
+  tk_all: () => {
+    for (const box of $app.querySelectorAll('[data-act=tk_tab]')) {
+      box.checked = true;
+      take.tabs.add(box.dataset.id);
+    }
   },
   tk_save: () => {
     readTake();
@@ -5035,7 +5217,7 @@ const ACTIONS = {
     const slot = el.dataset.slot;
     const v = el.dataset.v;
     if (mealToday(slot)) return render();
-    let items = [];
+    let items = {};
     if (v === 'menu') {
       try {
         items = dishesToItems(currentMenu(0).menu.meals[slot] ?? []);
@@ -5043,10 +5225,10 @@ const ACTIONS = {
         logError(err, 'menu items');
       }
     }
-    if (v === 'none') persist({ type: 'meal', slot, items: [], kcal: 0, skipped: true });
+    if (v === 'none') persist({ type: 'meal', slot, items: {}, kcal: 0, skipped: true });
     else if (v === 'small') {
-      const full = homeFoods() ? (() => { try { return dishesToItems(currentMenu(0).menu.meals[slot] ?? []); } catch { return []; } })() : [];
-      const half = full.map((it) => ({ ...it, qty: (it.qty ?? 1) / 2 }));
+      const full = homeFoods() ? (() => { try { return dishesToItems(currentMenu(0).menu.meals[slot] ?? []); } catch { return {}; } })() : {};
+      const half = Object.fromEntries(Object.entries(full).map(([id, q]) => [id, Math.round((q / 2) * 100) / 100]));
       persist({ type: 'meal', slot, items: half, ...mealTotals(half), size: 'small' });
     } else persist({ type: 'meal', slot, items, ...mealTotals(items), size: 'normal' });
     native.haptic('MEDIUM');
@@ -5262,6 +5444,17 @@ const ACTIONS = {
     medDraft = null;
     go('meds');
   },
+  med_days: (el) => {
+    readMedForm();
+    medDraft.days = Number(el.dataset.v) || 0;
+    if (medDraft.days && !medDraft.start) medDraft.start = dayKey(Date.now());
+    render();
+  },
+  med_restart: () => {
+    readMedForm();
+    medDraft.start = dayKey(Date.now());
+    render();
+  },
   med_save: () => {
     readMedForm();
     const d = medDraft;
@@ -5272,6 +5465,11 @@ const ACTIONS = {
     if (!d.times.length) {
       d.err = t('med_need_dose');
       return render();
+    }
+    if (d.days && !d.start) d.start = dayKey(Date.now());
+    if (!d.days) {
+      delete d.days;
+      delete d.start;
     }
     const others = (S.plan.meds ?? []).filter((x) => x.id !== d.id);
     const { err, kindTouched, ...clean } = d;
@@ -5670,6 +5868,7 @@ const ACTIONS = {
     go(`dose/${slot}`);
   },
   severe: () => {
+    if (!confirm(t('severe_confirm'))) return;
     persist({ type: 'hypo', outcome: 'severe', rounds: lowFlow?.round ?? 0 });
     native.cancelAlarm(99);
     lowFlow = { ...(lowFlow ?? {}), step: 'severe' };
@@ -6030,7 +6229,7 @@ function nextAfterReading() {
 // A second tap on the same button right after the first is ignored (shaky hands must not log a
 // dose twice). A failing action shows a short message instead of leaving the screen stuck.
 let lastTap = { el: null, at: 0 };
-const REPEATABLE = new Set(['db_amt', 'med_amt', 'med_range', 'reg_age', 'units', 'wh_pick', 'del_pick']);
+const REPEATABLE = new Set(['pick_add', 'pick_minus', 'tk_amt', 'db_amt', 'med_amt', 'med_range', 'reg_age', 'units', 'wh_pick', 'del_pick']);
 function runAction(el) {
   const act = el.dataset.act;
   try {

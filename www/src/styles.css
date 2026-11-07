@@ -1386,3 +1386,99 @@ a.round-btn { text-decoration: none; }
 .hero-urgent { display: block; margin: 10px auto 0; padding: 9px 18px; border: 0; border-radius: 14px; background: #fff; color: var(--hero-b); font: inherit; font-weight: 700; cursor: pointer; }
 .hero-wave { height: 34px; margin-top: 8px; }
 .hero-empty .hero-num { font-size: 3rem; }
+
+/* ===== insulin / medicine screen ===== */
+.take { padding-bottom: 150px; }
+.tk-card { padding: 16px; border-radius: 24px; background: var(--surface); box-shadow: 0 8px 26px rgba(40, 40, 110, 0.07); margin-bottom: 14px; }
+.tk-head { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; }
+.tk-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-strong); }
+.tk-ic .ic { width: 22px; height: 22px; }
+.tk-head b { display: block; font-size: 1.12rem; }
+.tk-head span { color: var(--muted); font-size: 0.86rem; }
+.tk-card .tk-units { margin: 14px 0 6px; grid-template-columns: 60px 1fr 60px; }
+.tk-card .tk-units button { height: 60px; }
+.tk-u { display: grid; justify-items: center; }
+.tk-u output { font-family: 'Poppins', sans-serif; font-size: 3.4rem; font-weight: 700; line-height: 1; }
+.tk-u span { color: var(--muted); font-size: 0.86rem; margin-top: 2px; }
+.tk-note { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 10px 12px; border: 0; border-radius: 14px; background: var(--surface-2); color: var(--muted); font: inherit; font-size: 0.86rem; text-align: left; cursor: pointer; }
+.tk-note .ic { width: 18px; height: 18px; flex: none; color: var(--primary-strong); }
+.tk-note span { flex: 1; }
+.tk-note b { color: var(--primary-strong); white-space: nowrap; }
+.tk-note.ok { background: var(--ok-soft); color: var(--ok); font-weight: 600; cursor: default; }
+.tk-note.ok .ic { color: var(--ok); }
+.tk-q { margin: 14px 2px 8px; font-weight: 600; font-size: 0.92rem; }
+.tk-meal3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tk-meal3 button { display: grid; justify-items: center; gap: 4px; padding: 10px 4px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 0.86rem; font-weight: 600; cursor: pointer; }
+.tk-meal3 .ic { width: 22px; height: 22px; color: var(--muted); }
+.tk-meal3 button.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); }
+.tk-meal3 button.on .ic { color: var(--primary-strong); }
+.med-togs { display: grid; gap: 10px; margin-bottom: 14px; }
+.med-tog { position: relative; display: grid; grid-template-columns: 44px 1fr 36px; gap: 12px; align-items: center; min-height: 68px; padding: 10px 14px; border-radius: 18px; border: 2px solid transparent; background: var(--surface); box-shadow: 0 6px 20px rgba(40, 40, 110, 0.06); cursor: pointer; }
+.med-tog input { position: absolute; opacity: 0; pointer-events: none; }
+.mt-ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--warn-soft); color: var(--warn); }
+.mt-ic .ic { width: 22px; height: 22px; }
+.mt-body { display: grid; gap: 2px; min-width: 0; }
+.mt-body b { font-size: 1.02rem; overflow-wrap: anywhere; }
+.mt-body span { color: var(--muted); font-size: 0.86rem; }
+.mt-check { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line); color: transparent; }
+.mt-check .ic { width: 18px; height: 18px; stroke-width: 3; }
+.med-tog:has(input:checked) { border-color: var(--ok); background: var(--ok-soft); }
+.med-tog:has(input:checked) .mt-check, .mt-check.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.med-tog.done { cursor: default; background: var(--ok-soft); box-shadow: none; }
+.tk-when { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 16px; background: var(--surface); color: var(--muted); font-weight: 600; }
+.tk-when .ic { width: 18px; height: 18px; }
+.tk-when span { flex: 1; }
+.tk-when input { border: 0; background: var(--surface-2); border-radius: 12px; padding: 8px 10px; font: inherit; color: var(--text); }
+.take-actions { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: min(520px, 100%); z-index: 20; display: grid; gap: 4px; padding: 12px 18px calc(env(safe-area-inset-bottom, 0px) + 10px); background: linear-gradient(to top, var(--bg) 75%, transparent); }
+.take-actions .btn-lg { margin: 0; }
+.alert-when { display: block; margin-top: 2px; font-size: 0.82rem; opacity: 0.8; }
+/* Today rows: a tick for each thing done */
+.tr-ticks { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px; }
+.tr-tick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.86rem; color: var(--muted); }
+.tr-tick i { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0.7; }
+.tr-tick .ic { width: 16px; height: 16px; padding: 2px; border-radius: 50%; background: var(--ok); color: #fff; stroke-width: 3.2; }
+.tr-tick.ok { color: var(--ok); font-weight: 600; }
+.today-row.now .tr-tick { color: rgba(255, 255, 255, 0.92); }
+.today-row.now .tr-tick.ok { color: #fff; }
+.today-row.now .tr-tick .ic { background: #fff; color: var(--primary-strong); }
+.today-row.done .tr-tick { color: var(--ok); }
+.tr-late { font-style: normal; font-size: 0.74rem; font-weight: 700; padding: 2px 8px; margin-left: 6px; border-radius: var(--r-pill); background: var(--warn-soft); color: var(--warn); vertical-align: 2px; }
+.today-row.late .tr-ticks .tr-tick:not(.ok) { color: var(--warn); }
+
+/* ===== food picker ===== */
+.pick { padding-bottom: 120px; }
+.psearch { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 16px; background: var(--surface); box-shadow: 0 4px 16px rgba(40, 40, 110, 0.06); }
+.psearch .ic { width: 20px; height: 20px; color: var(--muted); }
+.psearch input { flex: 1; min-width: 0; height: 52px; border: 0; background: none; font: inherit; font-size: 1.02rem; color: var(--text); outline: none; }
+.pchips { display: flex; gap: 8px; overflow-x: auto; padding: 12px 2px; margin: 0 -2px; scrollbar-width: none; }
+.pchips::-webkit-scrollbar { display: none; }
+.pchip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--r-pill); border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.pchip span { font-size: 1.1rem; line-height: 1; }
+.pchip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.ftiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ftile { position: relative; display: grid; justify-items: center; align-content: start; gap: 2px; min-height: 112px; padding: 12px 6px 10px; border-radius: 18px; border: 2px solid transparent; background: var(--surface); color: var(--text); font: inherit; text-align: center; cursor: pointer; box-shadow: 0 4px 16px rgba(40, 40, 110, 0.06); }
+.ftile[hidden] { display: none; }
+.ft-pic { font-size: 2.1rem; line-height: 1.15; }
+.ftile b { font-size: 0.9rem; line-height: 1.25; overflow-wrap: anywhere; }
+.ftile small { color: var(--muted); font-size: 0.74rem; }
+.ftile.on { border-color: var(--ok); background: var(--ok-soft); }
+.ft-n { position: absolute; top: 6px; right: 6px; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px; display: grid; place-items: center; background: var(--ok); color: #fff; font-weight: 700; font-size: 0.85rem; }
+.ft-minus { position: absolute; top: 6px; left: 6px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); }
+.ft-minus .ic { width: 14px; height: 14px; stroke-width: 3; }
+.ft-warn { position: absolute; bottom: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.pick-none { text-align: center; color: var(--muted); margin: 18px 0; }
+.pick-bar { position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); width: min(520px, 100%); z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--surface); box-shadow: 0 -8px 24px rgba(40, 40, 110, 0.1); border-radius: 22px 22px 0 0; }
+.pick-bar > div { display: grid; }
+.pick-bar b { font-size: 1rem; }
+.pick-bar span { color: var(--muted); font-size: 0.86rem; }
+.pick-bar .btn { min-width: 120px; margin: 0; }
+
+/* medicine courses */
+.course-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.course-chips button { padding: 10px 16px; border-radius: var(--r-pill); border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.course-chips button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.course-start { margin-top: 12px; }
+.course-badge { display: inline-flex; align-items: center; gap: 5px; margin: 4px 0 2px; padding: 3px 10px; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-strong); font-size: 0.8rem; font-weight: 600; width: fit-content; }
+.course-badge .ic { width: 14px; height: 14px; }
+.course-badge.done { background: var(--ok-soft); color: var(--ok); }
+.med-card.finished { opacity: 0.8; }

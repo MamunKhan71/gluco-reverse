@@ -36,3 +36,19 @@ test('report: other family members are left out, coverage uses tracked days', ()
   assert.equal(r.readings.length, 2);
   assert.ok(r.stats.daysWithData > 50, `coverage ${r.stats.daysWithData}% should not be diluted by 90 untracked days`);
 });
+
+import { medActive, daysLeft, insulinDoses, generalTimes } from '../www/src/meds.js';
+
+test('a 7-day medicine stops by itself after 7 days and stays in the list', () => {
+  const key = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+  const done = { id: 'a', type: 'tablet', name: 'Flagyl', days: 7, start: key(start), times: [{ when: 'morning', amount: 1 }] };
+  const fresh = { ...done, id: 'b', start: key(new Date()) };
+  assert.equal(medActive(done), false);
+  assert.equal(medActive(fresh), true);
+  assert.equal(daysLeft(fresh), 7);
+  assert.deepEqual(generalTimes([done, fresh]).map((x) => x.medId), ['b']);
+  const ongoing = { id: 'c', type: 'pen', name: 'Lantus', insulinKind: 'basal', times: [{ when: 'night', amount: 20 }] };
+  assert.equal(insulinDoses([ongoing]).length, 1);
+});
