@@ -1241,6 +1241,111 @@ function viewAte(slot) {
   </div>`;
 }
 
+
+// === Home: the last sugar reading, shown plainly ==============================================
+// One big number, what it means in words, a colour scale with the target zone, the last 7 days,
+// and one clear next action.
+const SCALE_MIN = 2;
+const SCALE_MAX = 20;
+const scalePct = (v) => Math.max(0, Math.min(100, ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
+
+function sparkline(rs) {
+  if (rs.length < 2) return '';
+  const W = 280;
+  const H = 54;
+  const t0 = rs[0].ts;
+  const span = Math.max(1, rs.at(-1).ts - t0);
+  const lo = Math.min(4, ...rs.map((r) => r.value));
+  const hi = Math.max(12, ...rs.map((r) => r.value));
+  const x = (r) => 6 + ((r.ts - t0) / span) * (W - 12);
+  const y = (v) => H - 6 - ((v - lo) / (hi - lo)) * (H - 12);
+  const [tlo, thi] = S.plan.targets.preMeal;
+  const pts = rs.map((r) => `${x(r).toFixed(1)},${y(r.value).toFixed(1)}`).join(' ');
+  const dots = rs
+    .map((r) => `<circle cx="${x(r).toFixed(1)}" cy="${y(r.value).toFixed(1)}" r="3.2" class="sp-dot ${statusClass(r.value, r.context)}"/>`)
+    .join('');
+  return `<svg class="sparkline" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="0" y="${y(thi).toFixed(1)}" width="${W}" height="${Math.max(2, y(tlo) - y(thi)).toFixed(1)}" class="sp-band"/>
+    <polyline points="${pts}" class="sp-line"/>${dots}</svg>`;
+}
+
+const SH_TONE = { in_range: 'ok', below_target: 'ok', high: 'warn', very_high: 'bad', low: 'bad', severe_low: 'bad' };
+
+function sugarHero() {
+  const rs = readingsSorted();
+  const last = rs.at(-1);
+  const meterBtn = S.settings.meter && meterSupported() && !isCaregiver()
+    ? `<button class="sh-btn" data-act="ms_start">${icon('bluetooth')} ${t('sh_from_meter')}</button>`
+    : '';
+  const newBtn = `<button class="sh-btn primary" data-act="tk_sugar">${icon('plus')} ${t('sh_new')}</button>`;
+  if (!last) {
+    return `<section class="sugar-hero empty">
+      <div class="sh-top"><span class="sh-label">${icon('drop')} ${t('sh_title')}</span></div>
+      <p class="sh-empty">${t('sh_none')}</p>
+      <div class="sh-actions">${newBtn}${meterBtn}</div>
+    </section>`;
+  }
+  const st = statusClass(last.value, last.context);
+  const tone = SH_TONE[st] ?? 'ok';
+  const [lo, hi] = rangeFor(last.context);
+  const prev = rs.at(-2);
+  const diff = prev ? Math.round((last.value - prev.value) * 10) / 10 : 0;
+  const trend = prev && Math.abs(diff) >= 0.5
+    ? `<span class="sh-trend ${diff > 0 ? 'up' : 'down'}">${icon(diff > 0 ? 'up' : 'down')} ${Math.abs(diff)}</span>`
+    : prev ? `<span class="sh-trend flat">${t('sh_steady')}</span>` : '';
+  const old = !isToday(last.ts);
+  const week = rs.filter((r) => Date.now() - r.ts < 7 * DAY).slice(-14);
+  const action = {
+    low: `<button class="sh-cta bad" data-act="go" data-to="low">${icon('down')} ${t('sh_do_low')}</button>`,
+    severe_low: `<button class="sh-cta bad" data-act="go" data-to="low">${icon('down')} ${t('sh_do_low')}</button>`,
+    very_high: `<button class="sh-cta bad" data-act="go" data-to="high">${icon('up')} ${t('sh_do_high')}</button>`,
+  }[st] ?? '';
+  return `<section class="sugar-hero tone-${tone} ${old ? 'old' : ''}">
+    <div class="sh-top">
+      <span class="sh-label">${icon('drop')} ${t(old ? 'sh_last_old' : 'sh_title')}</span>
+      <span class="sh-chip">${t(`st_${st}`)}</span>
+    </div>
+    <button class="sh-main" data-act="go" data-to="history" aria-label="${t('tab_history')}">
+      <span class="sh-value">${last.value}</span>
+      <span class="sh-side"><span class="sh-unit">mmol/L</span>${trend}</span>
+    </button>
+    <div class="sh-meta">${esc(t(`ctx_${last.context}`))} · ${ago(last.ts)}${last.source === 'meter' ? ` · ${icon('bluetooth')} ${t('feed_meter')}` : ''}</div>
+    <div class="sh-scale" aria-hidden="true">
+      <div class="sh-bar"><span class="sh-target" style="left:${scalePct(lo)}%;width:${scalePct(hi) - scalePct(lo)}%"></span>
+        <span class="sh-marker" style="left:${scalePct(last.value)}%"></span></div>
+      <div class="sh-ticks"><span>${t('st_low')}</span><span>${t('sh_target', lo, hi)}</span><span>${t('sh_high')}</span></div>
+    </div>
+    <p class="sh-msg">${old ? t('sh_msg_old') : t(`sh_msg_${st}`)}</p>
+    ${action}
+    ${week.length >= 2 ? `<div class="sh-week"><span>${t('sh_week')}</span>${sparkline(week)}</div>` : ''}
+    ${meterBtn ? `<div class="sh-actions">${meterBtn}</div>` : ''}
+  </section>`;
+}
+
+// The one thing to do now (or next), as a single tap.
+function nextStep() {
+  const now = minOfTs(Date.now());
+  for (const d of DAY_SLOTS.map(dayStatus)) {
+    const at = minutesOf(d.time);
+    const todo = d.dose && !d.doseRec && !isMissed(d.slot)
+      ? { act: 'tk_take', ic: 'syringe', text: t('ns_dose', esc(d.dose.name), doseUnits(d.dose)) }
+      : d.medsDone < d.meds.length
+        ? { act: 'tk_take', ic: 'pill', text: t('ns_meds', loc(d.meds.length - d.medsDone)) }
+        : d.hasMeal && !d.meal && now >= minutesOf(mealAtFor(d.slot)) - 30
+          ? { act: 'tk_ate', ic: 'food', text: t('ns_food') }
+          : null;
+    if (!todo) continue;
+    if (at - now > 4 * 60) break; // far away: nothing to say yet
+    const due = at <= now;
+    return `<button class="next-step ${due ? 'due' : ''}" data-act="${todo.act}" data-slot="${d.slot}">
+      <span class="ns-ic">${icon(todo.ic)}</span>
+      <span class="ns-body"><span class="ns-when">${due ? t('ns_now', slotName(d.slot)) : t('ns_next', slotName(d.slot), loc(d.time))}</span><b>${todo.text}</b></span>
+      ${icon('chev')}
+    </button>`;
+  }
+  return `<div class="next-step done"><span class="ns-ic">${icon('check')}</span><span class="ns-body"><b>${t('ns_all_done')}</b></span></div>`;
+}
+
 function readTake() {
   const at = document.getElementById('tk-at')?.value;
   if (at && take) take.at = at;
@@ -1330,16 +1435,15 @@ function viewHome() {
       .filter((s) => s.warn)
       .map((s) => `<button class="alert yellow stock-alert" data-act="go" data-to="stock">${icon('box')}<div><strong>${esc(s.name ?? t(`s_${s.id}`))}</strong>${t(s.warn === 'replace' ? 'warn_replace' : 'warn_buy')}</div></button>`)
       .join('')}
-    ${S.settings.meter && meterSupported()
-      ? `<button class="meter-big" data-act="ms_start"><span class="mb-ic">${icon('bluetooth')}</span><span><b>${t('ms_title')}</b><span>${S.settings.meter.lastSync ? t('ms_last', ago(S.settings.meter.lastSync)) : t('ms_first')}</span></span>${icon('chev')}</button>`
-      : ''}
+    ${nextStep()}
+    ${sugarHero()}
     ${quickButtons()}
     <div class="section-title">${t('today_schedule')}</div>
     <div class="day-cards">${dayCards()}</div>
-    ${minis}
-    <div class="pill-row">
-      <button class="pill-btn coral" data-act="go" data-to="low">${icon('down')} ${t('low_tile')}</button>
-      <button class="pill-btn lav" data-act="go" data-to="high">${icon('up')} ${t('high_tile')}</button>
+    <div class="section-title">${t('feel_title')}</div>
+    <div class="feel-row">
+      <button class="feel low" data-act="go" data-to="low"><span>${icon('down')}</span><b>${t('feel_low')}</b><small>${t('feel_low_sub')}</small></button>
+      <button class="feel high" data-act="go" data-to="high"><span>${icon('up')}</span><b>${t('feel_high')}</b><small>${t('feel_high_sub')}</small></button>
     </div>
     ${
       today.getHours() >= 18 && homeFoods()

@@ -1198,3 +1198,69 @@ a.round-btn { text-decoration: none; }
 .ate-more { display: grid; gap: 8px; margin-top: 10px; }
 .ask-card b { display: block; margin-bottom: 10px; }
 .ask-card .row .btn { flex: 1; }
+
+/* ===== Home polish ===== */
+.next-step { display: grid; grid-template-columns: 48px 1fr 20px; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 12px 14px; margin: 4px 0 12px; border: 0; border-radius: 20px; font: inherit; color: var(--text); background: var(--surface); box-shadow: 0 6px 22px rgba(40, 40, 110, 0.07); cursor: pointer; }
+.next-step .ns-ic { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-strong); }
+.next-step .ns-ic .ic { width: 24px; height: 24px; }
+.ns-body { display: grid; gap: 2px; min-width: 0; }
+.ns-when { color: var(--muted); font-size: 0.82rem; font-weight: 600; }
+.ns-body b { font-size: 1.05rem; }
+.next-step > .ic { color: var(--muted); }
+.next-step.due { background: var(--grad); color: #fff; }
+.next-step.due .ns-ic { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.next-step.due .ns-when, .next-step.due > .ic { color: rgba(255, 255, 255, 0.85); }
+.next-step.done { grid-template-columns: 48px 1fr; background: var(--ok-soft); box-shadow: none; cursor: default; }
+.next-step.done .ns-ic { background: var(--ok); color: #fff; }
+
+.sugar-hero { --tone: var(--ok); --tone-soft: var(--ok-soft); position: relative; padding: 16px 16px 14px; margin-bottom: 14px; border-radius: 26px; background: var(--surface); box-shadow: 0 10px 30px rgba(40, 40, 110, 0.08); border-top: 6px solid var(--tone); }
+.sugar-hero.tone-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.sugar-hero.tone-bad { --tone: var(--danger); --tone-soft: var(--danger-soft); }
+.sugar-hero.old { --tone: var(--muted); --tone-soft: var(--surface-2); }
+.sugar-hero.empty { border-top-color: var(--line); }
+.sh-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sh-label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-weight: 600; font-size: 0.92rem; }
+.sh-label .ic { width: 18px; height: 18px; color: var(--tone); }
+.sh-chip { padding: 5px 12px; border-radius: var(--r-pill); background: var(--tone-soft); color: var(--tone); font-weight: 700; font-size: 0.9rem; }
+.sh-main { display: flex; align-items: flex-end; gap: 12px; width: 100%; margin: 6px 0 2px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.sh-value { font-family: 'Poppins', sans-serif; font-size: 4.2rem; font-weight: 700; line-height: 0.95; color: var(--tone); letter-spacing: -1px; }
+.sh-side { display: grid; gap: 4px; padding-bottom: 6px; }
+.sh-unit { color: var(--muted); font-weight: 600; font-size: 0.95rem; }
+.sh-trend { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; font-size: 0.9rem; }
+.sh-trend .ic { width: 16px; height: 16px; }
+.sh-trend.up { color: var(--warn); }
+.sh-trend.down { color: var(--primary-strong); }
+.sh-trend.flat { color: var(--muted); font-weight: 600; }
+.sh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--muted); font-size: 0.88rem; }
+.sh-meta .ic { width: 14px; height: 14px; }
+.sh-scale { margin: 14px 0 4px; }
+.sh-bar { position: relative; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--danger) 0%, var(--warn) 12%, var(--surface-2) 22%, var(--surface-2) 55%, var(--warn) 70%, var(--danger) 100%); }
+.sh-target { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: var(--ok); opacity: 0.85; }
+.sh-marker { position: absolute; top: 50%; width: 22px; height: 22px; margin-left: -11px; transform: translateY(-50%); border-radius: 50%; background: var(--surface); border: 5px solid var(--tone); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); }
+.sh-ticks { display: flex; justify-content: space-between; margin-top: 6px; color: var(--muted); font-size: 0.78rem; }
+.sh-msg { margin: 10px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--tone-soft); font-weight: 600; line-height: 1.45; }
+.sh-empty { color: var(--muted); margin: 10px 0 4px; }
+.sh-cta { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 14px; border: 0; border-radius: 16px; font: inherit; font-weight: 700; font-size: 1.05rem; color: #fff; background: var(--danger); cursor: pointer; }
+.sh-week { margin-top: 12px; }
+.sh-week > span { display: block; color: var(--muted); font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
+.sparkline { width: 100%; height: 54px; display: block; }
+.sp-band { fill: var(--ok-soft); }
+.sp-line { fill: none; stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: 0.7; }
+.sp-dot { fill: var(--ok); stroke: var(--surface); stroke-width: 1.5; }
+.sp-dot.high { fill: var(--warn); }
+.sp-dot.very_high, .sp-dot.low, .sp-dot.severe_low { fill: var(--danger); }
+.sh-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 14px; }
+.sh-btn { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 10px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.sh-btn .ic { width: 18px; height: 18px; }
+.sh-btn.primary { border-color: transparent; background: var(--grad); color: #fff; }
+
+.feel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.feel { display: grid; justify-items: start; gap: 4px; padding: 14px; border: 0; border-radius: 20px; font: inherit; text-align: left; cursor: pointer; color: var(--text); }
+.feel span { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.6); }
+.feel b { font-size: 0.98rem; }
+.feel small { color: var(--muted); font-size: 0.8rem; line-height: 1.3; }
+.feel.low { background: var(--danger-soft); }
+.feel.low span { color: var(--danger); }
+.feel.high { background: var(--warn-soft); }
+.feel.high span { color: var(--warn); }
+:root[data-theme='dark'] .feel span { background: rgba(0, 0, 0, 0.25); }
