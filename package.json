@@ -1,0 +1,25 @@
+{
+  "name": "diabetes-control",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.js",
+    "icons": "node tools/build-icons.mjs"
+  },
+  "dependencies": {
+    "@capacitor-community/bluetooth-le": "^7.3.2",
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/haptics": "^7.0.5",
+    "@capacitor/local-notifications": "^7.0.7",
+    "@capacitor/status-bar": "^7.0.6"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.10",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "lucide-static": "^0.460.0",
+    "qrcode-generator": "^1.4.4"
+  }
+}

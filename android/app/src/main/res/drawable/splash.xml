@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_bg" />
+    <item android:width="112dp" android:height="112dp" android:gravity="center">
+        <shape android:shape="rectangle">
+            <corners android:radius="34dp" />
+            <gradient android:angle="315" android:startColor="#4F6CF6" android:centerColor="#6A4FF0" android:endColor="#8B4DE8" />
+        </shape>
+    </item>
+    <item android:width="56dp" android:height="56dp" android:gravity="center" android:drawable="@drawable/ic_stat_drop" />
+</layer-list>

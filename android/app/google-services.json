@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "134509660754",
+    "project_id": "gluco-reverse",
+    "storage_bucket": "gluco-reverse.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:134509660754:android:c1611d00ee37e735276d8b",
+        "android_client_info": {
+          "package_name": "com.family.sugarhelper"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzEYTrCPaHxxrTdGKfB7rjFG8cnd5tGNE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

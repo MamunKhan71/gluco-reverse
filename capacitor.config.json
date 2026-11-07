@@ -1,0 +1,15 @@
+{
+  "appId": "com.family.sugarhelper",
+  "appName": "সুগার সহায়ক",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#f4f5fb",
+    "adjustMarginsForEdgeToEdge": "auto"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_drop",
+      "iconColor": "#5b4de8"
+    }
+  }
+}

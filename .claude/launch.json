@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "sugar-helper", "runtimeExecutable": "node", "runtimeArgs": ["server.js"], "port": 5173 }
+  ]
+}

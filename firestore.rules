@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    // Logged in with an email we checked (email code). Password-only sign-ups don't count.
+    function verified() {
+      return signedIn() && request.auth.token.email is string && request.auth.token.email_verified == true;
+    }
+    function memberDoc(fam) {
+      return /databases/$(database)/documents/families/$(fam)/members/$(request.auth.uid);
+    }
+    function isMember(fam) {
+      return signedIn() && exists(memberDoc(fam));
+    }
+    function isPatientOf(fam) {
+      return isMember(fam) && get(memberDoc(fam)).data.role == 'patient';
+    }
+    function familyExists(fam) {
+      return exists(/databases/$(database)/documents/families/$(fam)/meta/plan);
+    }
+
+    // A family member who shares the patient's meter: which family holds their readings.
+    // One link per family and email (id "<family>_<email>"), so no family can block another.
+    // Written by a member of that family after the email was checked with a code; read by
+    // whoever logs in with that email.
+    function linkPath(fam) {
+      return /databases/$(database)/documents/memberLinks/$(fam + '_' + request.auth.token.email);
+    }
+    function isPersonOf(fam, person) {
+      return verified() && exists(linkPath(fam)) && get(linkPath(fam)).data.person == person;
+    }
+    match /memberLinks/{id} {
+      allow read: if verified() && resource.data.email == request.auth.token.email;
+      allow create: if isMember(request.resource.data.family)
+        && id == request.resource.data.family + '_' + request.resource.data.email;
+      allow update: if isMember(resource.data.family) && request.resource.data.family == resource.data.family
+        && request.resource.data.email == resource.data.email;
+      allow delete: if isMember(resource.data.family) || (verified() && resource.data.email == request.auth.token.email);
+    }
+
+    // Each signed-in person's own profile (which family they belong to).
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /families/{fam} {
+      // Membership. You can only add yourself. A new family is started by its patient; an existing
+      // one is joined (as family/caregiver) by knowing its secret code. Nobody can change their role
+      // later. You may leave yourself; only the patient may remove others.
+      match /members/{uid} {
+        allow read: if isMember(fam) || (signedIn() && request.auth.uid == uid);
+        allow create: if signedIn() && request.auth.uid == uid && fam.size() >= 9
+          && ((familyExists(fam) && request.resource.data.role == 'caregiver')
+            || (!familyExists(fam) && request.resource.data.role == 'patient'));
+        allow update: if signedIn() && request.auth.uid == uid && request.resource.data.role == resource.data.role;
+        allow delete: if (signedIn() && request.auth.uid == uid) || isPatientOf(fam);
+      }
+      // A linked family member may read only the readings given to them.
+      match /records/{id} {
+        allow read: if isPersonOf(fam, resource.data.person);
+      }
+      // Plan and shared state: a phone with an older copy can never overwrite a newer one.
+      match /meta/{name} {
+        allow read: if isMember(fam);
+        allow write: if isMember(fam) && (
+          !(name in ['plan', 'state']) || resource == null
+          || request.resource.data.updatedAt > resource.data.updatedAt);
+      }
+      // Everything else in the family (records, presence, devices, share): members only.
+      match /{col}/{doc} {
+        allow read, write: if col != 'members' && col != 'meta' && isMember(fam);
+      }
+    }
+  }
+}
