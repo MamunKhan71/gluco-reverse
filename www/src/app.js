@@ -606,7 +606,8 @@ function render(soft) {
     logError(err, `view ${key}`);
     body = viewCrash(r.name);
   }
-  const html = body + (toast ? `<div class="toast">${icon('check')} ${esc(toast)}</div>` : '') + celebrationLayer();
+  if (newPage) slotSheet = null;
+  const html = body + (toast ? `<div class="toast">${icon('check')} ${esc(toast)}</div>` : '') + celebrationLayer() + (r.name === 'home' ? slotSheetView() : '');
   toast = '';
   if (soft === true && !newPage && html === lastHtml) {
     if (r.name === 'low' && lowFlow?.step === 'timer') startTimer();
@@ -1405,6 +1406,80 @@ function todayRows() {
     .join('');
 }
 
+
+// === Home top card: greeting and the latest sugar, with the readings before it =================
+function homeHero() {
+  const lang = getLang() === 'bn' ? 'bn-BD' : 'en-GB';
+  const today = new Date();
+  const name = S.plan.patient.name || '';
+  const rs = readingsSorted();
+  const last = rs.at(-1);
+  const time = (ts) => new Date(ts).toLocaleTimeString(lang, { hour: 'numeric', minute: '2-digit', hour12: true });
+  const top = `<div class="hero-top">
+      <span class="hero-av">${esc(name.slice(0, 1) || '?')}</span>
+      <b class="hero-hi">${greeting()}, ${esc(name)}</b>
+      <span class="hero-date">${today.toLocaleDateString(lang, { day: 'numeric', month: 'short' })}</span>
+    </div>`;
+  const wave = `<svg class="hero-wave" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 C 70 4, 130 36, 200 20 S 330 4, 400 20 L400 40 L0 40 Z"/><path class="w2" d="M0 30 C 80 16, 150 42, 230 28 S 350 16, 400 30 L400 40 L0 40 Z"/></svg>`;
+  if (!last) {
+    return `<section class="hero">${top}
+      <div class="hero-empty"><span class="hero-num">–.–</span><p>${t('ss_none')}</p></div>${wave}</section>`;
+  }
+  const st = statusClass(last.value, last.context);
+  const old = !isToday(last.ts);
+  const tone = old ? 'old' : SH_TONE[st] ?? 'ok';
+  const [lo, hi] = rangeFor(last.context);
+  const isLow = ['low', 'severe_low'].includes(st);
+  const isHigh = st === 'high' || st === 'very_high';
+  const face = old ? 'clock' : isLow ? 'trend_down' : isHigh ? 'trend_up' : 'smile';
+  const word = old ? t('ss_not_today') : isLow ? t('st_low') : isHigh ? t('sh_high') : t('hero_normal');
+  const day = old ? `${dayKey(last.ts).slice(5).split('-').reverse().join('/')} ` : '';
+  const when = `${esc(t(`ctx_${last.context}`))} · ${day}${time(last.ts)}`;
+  const prev = rs.slice(-3, -1).reverse().map((r) => r.value);
+  const urgent = !old && (isLow || st === 'very_high');
+  const foot = urgent
+    ? `<button class="hero-urgent" data-act="go" data-to="${isLow ? 'low' : 'high'}">${t(isLow ? 'sh_do_low' : 'sh_do_high')} ›</button>`
+    : prev.length
+      ? `<p class="hero-prev">${t('hero_prev')} ${prev.join(' · ')}</p>`
+      : '';
+  return `<section class="hero tone-${tone}" data-act="go" data-to="history">${top}
+    <div class="hero-row">
+      <div><div class="hero-num">${last.value}<small>mmol/L</small></div><div class="hero-meta">${when}</div></div>
+      <div class="hero-state"><span class="hero-ring">${icon(face)}</span><b>${word}</b></div>
+    </div>
+    <div class="hero-bar"><span class="hero-zone" style="left:${scalePct(lo)}%;width:${scalePct(hi) - scalePct(lo)}%"></span><span class="hero-dot" style="left:${scalePct(last.value)}%"></span></div>
+    <div class="hero-lb"><span>${t('st_low')}</span><span>${t('hero_normal')} ${loc(lo)}–${loc(hi)}</span><span>${t('sh_high')}</span></div>
+    <p class="hero-tip">${old ? t('sh_msg_old') : t(`hero_tip_${st}`)}</p>
+    ${foot}
+    ${wave}
+  </section>`;
+}
+
+// Tapping a time: its three things side by side, in any order (nothing is forced first).
+let slotSheet = null;
+function slotSheetView() {
+  if (!slotSheet) return '';
+  const d = dayStatus(slotSheet);
+  const opt = (done, ic, title, sub, act, extra = '') =>
+    `<button class="ss-opt ${done ? 'done' : ''}" data-act="${act}" data-slot="${d.slot}" ${extra}>
+      <span class="ss-opt-ic">${done ? icon('check') : icon(ic)}</span>
+      <span class="ss-opt-body"><b>${title}</b><span>${sub}</span></span>${icon('chev')}</button>`;
+  const opts = [
+    opt(!!d.reading, 'drop', t('tk_sugar'), d.reading ? `${d.reading.value} · ${hhmm(d.reading.ts)}` : t('sheet_sugar'), 'sheet_sugar'),
+    d.dose || d.meds.length
+      ? opt((!d.dose || d.doseRec) && d.medsDone === d.meds.length, 'syringe', t('q_dose'),
+          d.doseRec ? (d.doseRec.action === 'skip' ? t('tk_skipped') : `${esc(d.dose.name)} ${d.doseRec.units} ${t('units')}`) : d.dose ? `${esc(d.dose.name)} ${doseUnits(d.dose)} ${t('units')}` : `${t('tk_meds')} ${loc(d.medsDone)}/${loc(d.meds.length)}`,
+          'sheet_take')
+      : '',
+    d.hasMeal ? opt(!!d.meal, 'food', t('tk_food'), d.meal ? (d.meal.skipped ? t('tk_no_meal') : t('tk_ate')) : t('sheet_food'), 'sheet_ate') : '',
+  ].join('');
+  return `<div class="sheet-back" data-act="sheet_close"></div>
+  <div class="wh-sheet show slot-sheet" role="dialog" aria-label="${slotName(d.slot)}">
+    <div class="wh-sheet-head"><div><b>${slotName(d.slot)}</b><span>${loc(d.time)}</span></div><button class="wh-clear" data-act="sheet_close">${t('close')}</button></div>
+    <div class="ss-opts">${opts}</div>
+  </div>`;
+}
+
 function readTake() {
   const at = document.getElementById('tk-at')?.value;
   if (at && take) take.at = at;
@@ -1479,15 +1554,12 @@ function viewHome() {
 
   return tabPage(
     'home',
-    `<header class="home-hello">
-      <b>${greeting()}, ${esc(S.plan.patient.name)}</b>
-      <span>${today.toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-    </header>
+    `${homeHero()}
     ${(S.plan.meds ?? []).length || S.plan.doses.length ? '' : `<button class="card med-start" data-act="go" data-to="med/new"><span class="med-ic pen">${icon('syringe')}</span><span><b>${t('med_start')}</b><span>${t('med_start_sub')}</span></span>${icon('chev')}</button>`}
     ${alerts.filter((a) => a.level === 'red' || a.level === 'orange').map((a) => alertCard(a)).join('')}
-    ${simpleSugar()}
     ${quickButtons()}
-    <div class="section-title">${t('ss_today')}</div>
+    <div class="section-head"><span class="section-title">${t('ss_today')}</span>
+      ${S.plan.doses.length || generalTimes(S.plan.meds ?? []).length ? `<button class="all-at-once" data-act="go" data-to="dosebook">${icon('check')} ${t('db_home')}</button>` : ''}</div>
     <div class="today-rows">${todayRows()}</div>
     <div class="section-title">${t('feel_title')}</div>
     <div class="feel-row">
@@ -4856,14 +4928,26 @@ const ACTIONS = {
   },
   role_patient: () => startPatientFamily(),
   tk_slot: (el) => {
-    const d = dayStatus(el.dataset.slot);
-    if (!d.reading && (d.dose || d.slot === 'breakfast')) {
-      readingFlow = { ctx: CTX_FOR_SLOT[d.slot] };
-      return go('reading');
-    }
-    if ((d.dose && !d.doseRec) || d.medsDone < d.meds.length) return go(`take/${d.slot}`);
-    if (d.hasMeal && !d.meal) return go(`ate/${d.slot}`);
-    go(d.dose || d.meds.length ? `take/${d.slot}` : `ate/${d.slot}`);
+    slotSheet = el.dataset.slot;
+    render();
+  },
+  sheet_close: () => {
+    slotSheet = null;
+    render();
+  },
+  sheet_sugar: (el) => {
+    slotSheet = null;
+    readingFlow = { ctx: CTX_FOR_SLOT[el.dataset.slot] };
+    go('reading');
+  },
+  sheet_take: (el) => {
+    slotSheet = null;
+    take = null;
+    go(`take/${el.dataset.slot}`);
+  },
+  sheet_ate: (el) => {
+    slotSheet = null;
+    go(`ate/${el.dataset.slot}`);
   },
   tk_sugar: (el) => {
     const slot = el.dataset.slot;
@@ -4968,7 +5052,7 @@ const ACTIONS = {
     native.haptic('MEDIUM');
     toast = t('saved');
     const d = dayStatus(slot);
-    if (v !== 'none' && d.dose?.kind === 'bolus' && !d.doseRec && !isMissed(slot)) return render(); // ask about the insulin
+    void d;
     go('home');
   },
   role_member: () => {
@@ -5635,7 +5719,7 @@ const ACTIONS = {
       }
       toast = `${t('saved')} · ${rec.value}`;
       readingFlow = null;
-      render();
+      go('home');
     }),
 
   food_slot: (el) => {

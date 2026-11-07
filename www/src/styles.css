@@ -1303,3 +1303,86 @@ a.round-btn { text-decoration: none; }
 .today-row.now .tr-ic { background: rgba(255, 255, 255, 0.22); color: #fff; }
 .today-row.now .tr-body span, .today-row.now .tr-end small { color: rgba(255, 255, 255, 0.9); font-weight: 600; }
 .tr-now { font-style: normal; font-size: 0.78rem; font-weight: 700; padding: 2px 9px; margin-left: 6px; border-radius: var(--r-pill); background: #fff; color: var(--primary-strong); vertical-align: 2px; }
+/* "today's doses at once", next to the Today title */
+.section-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 18px 2px 10px; }
+.section-head .section-title { margin: 0; }
+.all-at-once { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 14px; border: 0; border-radius: var(--r-pill); background: var(--primary-soft); color: var(--primary-strong); font: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer; }
+.all-at-once .ic { width: 16px; height: 16px; stroke-width: 2.6; }
+
+/* ===== Home top card ===== */
+.hero { --hero-a: #5a5ef0; --hero-b: #3a3cc4; position: relative; overflow: hidden; margin: 0 -2px 14px; padding: 16px 16px 0; border-radius: 28px; color: #fff; background: linear-gradient(160deg, var(--hero-a) 0%, var(--hero-b) 100%); box-shadow: 0 16px 36px rgba(58, 60, 196, 0.32); cursor: pointer; }
+.hero.tone-warn { --hero-a: #f0a23b; --hero-b: #d9772a; box-shadow: 0 16px 36px rgba(217, 119, 42, 0.3); }
+.hero.tone-bad { --hero-a: #ef6f63; --hero-b: #c9433b; box-shadow: 0 16px 36px rgba(201, 67, 59, 0.3); }
+.hero-top { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; }
+.hero-av { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.22); border: 2px solid rgba(255, 255, 255, 0.55); font-weight: 700; font-size: 1.15rem; }
+.hero-hi { display: grid; line-height: 1.25; min-width: 0; }
+.hero-hi small { opacity: 0.8; font-size: 0.85rem; }
+.hero-hi b { font-size: 1.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-date { padding: 6px 12px; border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.18); font-size: 0.85rem; font-weight: 600; }
+.hero-strip { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; margin-top: 18px; }
+.hero-left { display: flex; justify-content: flex-end; gap: 12px; }
+.hero-right { display: flex; justify-content: flex-start; }
+.hero-side { display: grid; justify-items: center; line-height: 1.1; opacity: 0.7; }
+.hero-side b { font-family: 'Poppins', sans-serif; font-size: 1.2rem; font-weight: 600; }
+.hero-side small { font-size: 0.68rem; opacity: 0.9; }
+.hero-side.s2 { opacity: 0.45; }
+.hero-side.target b { font-size: 1rem; }
+.hero-main { display: grid; justify-items: center; padding: 0 6px; }
+.hero-big { font-family: 'Poppins', sans-serif; font-size: 4.4rem; font-weight: 700; line-height: 1; letter-spacing: -1.5px; }
+.hero-time { margin-top: 4px; font-size: 0.9rem; font-weight: 600; opacity: 0.9; }
+.hero-status { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 0.86rem; }
+.hero-status > span:last-child { opacity: 0.85; }
+.hero-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--r-pill); background: #fff; color: var(--hero-b); font-weight: 700; font-size: 0.9rem; }
+.hero-chip i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.hero.tone-ok .hero-chip { color: var(--ok); }
+.hero-msg { position: relative; z-index: 1; margin: 12px 0 0; text-align: center; font-weight: 600; line-height: 1.45; }
+.hero-empty { display: grid; justify-items: center; margin: 14px 0 6px; text-align: center; }
+.hero-empty p { margin: 6px 0 0; opacity: 0.9; }
+.hero-wave { display: block; width: calc(100% + 32px); height: 46px; margin: 6px -16px 0; }
+.hero-wave path { fill: rgba(255, 255, 255, 0.12); }
+.hero-wave path.w2 { fill: rgba(255, 255, 255, 0.1); }
+.hero + .sh-cta { margin: -4px 0 14px; }
+:root[data-theme='dark'] .hero.tone-ok, :root[data-theme='dark'] .hero.tone-old, :root[data-theme='dark'] .hero:not([class*='tone-']) { --hero-a: #4b4dd6; --hero-b: #2c2e9e; }
+/* a time's three choices */
+.sheet-back { position: fixed; inset: 0; z-index: 29; background: rgba(20, 20, 40, 0.35); }
+.slot-sheet .wh-sheet-head span { display: block; }
+.ss-opts { display: grid; gap: 10px; }
+.ss-opt { display: grid; grid-template-columns: 52px 1fr 20px; gap: 12px; align-items: center; width: 100%; min-height: 72px; padding: 10px 14px; border: 1.5px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.ss-opt-ic { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-strong); }
+.ss-opt-ic .ic { width: 26px; height: 26px; }
+.ss-opt-body { display: grid; gap: 2px; }
+.ss-opt-body b { font-size: 1.1rem; }
+.ss-opt-body span { color: var(--muted); font-size: 0.9rem; }
+.ss-opt > .ic { color: var(--muted); }
+.ss-opt.done { background: var(--ok-soft); border-color: transparent; }
+.ss-opt.done .ss-opt-ic { background: var(--ok); color: #fff; }
+.hero-side small { white-space: nowrap; font-size: 0.66rem; }
+.hero-left { gap: 10px; }
+
+/* ===== Home top card v3 ===== */
+.hero { padding: 14px 16px 0; }
+.hero.tone-warn { --hero-a: #f6a648; --hero-b: #e2702f; box-shadow: 0 14px 32px rgba(226, 112, 47, 0.3); }
+.hero.tone-bad { --hero-a: #f07a6c; --hero-b: #cc4339; box-shadow: 0 14px 32px rgba(204, 67, 57, 0.3); }
+.hero.tone-old { --hero-a: #7f86a8; --hero-b: #5b6184; box-shadow: 0 14px 32px rgba(91, 97, 132, 0.28); }
+.hero-top { grid-template-columns: 34px 1fr auto; gap: 10px; }
+.hero-av { width: 34px; height: 34px; font-size: 0.95rem; background: transparent; border: 1.5px solid rgba(255, 255, 255, 0.6); }
+.hero-hi { font-size: 1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.hero-date { padding: 4px 11px; background: rgba(255, 255, 255, 0.2); font-size: 0.82rem; }
+.hero-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
+.hero-num { font-family: 'Poppins', sans-serif; font-size: 3.4rem; font-weight: 600; line-height: 1; letter-spacing: -1px; }
+.hero-num small { font-size: 0.85rem; font-weight: 500; opacity: 0.85; margin-left: 6px; letter-spacing: 0; }
+.hero-meta { margin-top: 6px; font-size: 0.86rem; opacity: 0.92; }
+.hero-state { display: grid; justify-items: center; gap: 6px; flex: none; }
+.hero-ring { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.22); border: 2px solid rgba(255, 255, 255, 0.55); }
+.hero-ring .ic { width: 30px; height: 30px; color: #fff; stroke-width: 2.2; }
+.hero-state b { padding: 3px 12px; border-radius: var(--r-pill); background: rgba(255, 255, 255, 0.95); color: var(--hero-b); font-size: 0.85rem; font-weight: 700; }
+.hero.tone-ok .hero-state b { color: #0f6e56; }
+.hero-bar { position: relative; height: 8px; margin: 16px 2px 0; border-radius: 99px; background: rgba(255, 255, 255, 0.22); }
+.hero-zone { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: rgba(255, 255, 255, 0.72); }
+.hero-dot { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), 0 2px 6px rgba(0, 0, 0, 0.18); }
+.hero-lb { display: flex; justify-content: space-between; margin: 7px 2px 0; font-size: 0.76rem; opacity: 0.88; }
+.hero-tip { margin: 12px 0 0; text-align: center; font-weight: 600; font-size: 0.98rem; }
+.hero-prev { margin: 4px 0 0; text-align: center; font-size: 0.8rem; opacity: 0.78; }
+.hero-urgent { display: block; margin: 10px auto 0; padding: 9px 18px; border: 0; border-radius: 14px; background: #fff; color: var(--hero-b); font: inherit; font-weight: 700; cursor: pointer; }
+.hero-wave { height: 34px; margin-top: 8px; }
+.hero-empty .hero-num { font-size: 3rem; }
