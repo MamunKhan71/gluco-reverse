@@ -1298,3 +1298,8 @@ a.round-btn { text-decoration: none; }
 .today-row.done .tr-body span { color: var(--ok); font-weight: 600; }
 .today-row.late { box-shadow: inset 0 0 0 2px var(--warn); }
 .today-row.late .tr-body span { color: var(--warn); font-weight: 600; }
+/* the time to act on now */
+.today-row.now { background: var(--grad); color: #fff; box-shadow: 0 10px 26px rgba(101, 99, 222, 0.35); }
+.today-row.now .tr-ic { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.today-row.now .tr-body span, .today-row.now .tr-end small { color: rgba(255, 255, 255, 0.9); font-weight: 600; }
+.tr-now { font-style: normal; font-size: 0.78rem; font-weight: 700; padding: 2px 9px; margin-left: 6px; border-radius: var(--r-pill); background: #fff; color: var(--primary-strong); vertical-align: 2px; }

@@ -1351,9 +1351,7 @@ function nextStep() {
 // Last sugar: one big number, one word for what it means, when, and one line of advice.
 function simpleSugar() {
   const last = readingsSorted().at(-1);
-  const meter = S.settings.meter && meterSupported() && !isCaregiver()
-    ? `<button class="ss-meter" data-act="ms_start">${icon('bluetooth')} ${t('sh_from_meter')}</button>`
-    : '';
+  const meter = '';
   if (!last) {
     return `<section class="simple-sugar empty">
       <div class="ss-label">${t('sh_title')}</div>
@@ -1382,8 +1380,11 @@ function simpleSugar() {
 // Today's times as plain rows: a big tick when done, else what is still left. One tap opens it.
 function todayRows() {
   const now = minOfTs(Date.now());
-  return DAY_SLOTS.map(dayStatus)
-    .filter((d) => d.hasMeal || d.dose || d.meds.length)
+  const rows = DAY_SLOTS.map(dayStatus).filter((d) => d.hasMeal || d.dose || d.meds.length);
+  const pendingOf = (d) => (!d.reading && (d.dose || d.slot === 'breakfast')) || (d.dose && !d.doseRec) || d.medsDone < d.meds.length || (d.hasMeal && !d.meal);
+  // 'now' = the first unfinished time that has started (or starts within the hour)
+  const nowSlot = rows.find((d) => pendingOf(d) && minutesOf(d.time) - 60 <= now)?.slot;
+  return rows
     .map((d) => {
       const left = [
         !d.reading && (d.dose || d.slot === 'breakfast') ? t('tk_sugar') : '',
@@ -1394,9 +1395,10 @@ function todayRows() {
       const done = !left.length;
       const late = !done && now > minutesOf(d.time) + 60;
       const sub = done ? t('ss_all_done') : t(late ? 'ss_left_late' : 'ss_left', left.join(', '));
-      return `<button class="today-row ${done ? 'done' : late ? 'late' : ''}" data-act="tk_slot" data-slot="${d.slot}">
+      const isNow = d.slot === nowSlot;
+      return `<button class="today-row ${done ? 'done' : isNow ? 'now' : late ? 'late' : ''}" data-act="tk_slot" data-slot="${d.slot}">
         <span class="tr-ic">${icon(SLOT_ICON[d.slot] ?? 'clock')}</span>
-        <span class="tr-body"><b>${slotName(d.slot)}</b><span>${sub}</span></span>
+        <span class="tr-body"><b>${slotName(d.slot)}${isNow ? ` <em class="tr-now">${t('tr_now')}</em>` : ''}</b><span>${sub}</span></span>
         <span class="tr-end">${done ? icon('check') : `<small>${loc(d.time)}</small>`}</span>
       </button>`;
     })
@@ -1483,7 +1485,6 @@ function viewHome() {
     </header>
     ${(S.plan.meds ?? []).length || S.plan.doses.length ? '' : `<button class="card med-start" data-act="go" data-to="med/new"><span class="med-ic pen">${icon('syringe')}</span><span><b>${t('med_start')}</b><span>${t('med_start_sub')}</span></span>${icon('chev')}</button>`}
     ${alerts.filter((a) => a.level === 'red' || a.level === 'orange').map((a) => alertCard(a)).join('')}
-    ${nextStep()}
     ${simpleSugar()}
     ${quickButtons()}
     <div class="section-title">${t('ss_today')}</div>
