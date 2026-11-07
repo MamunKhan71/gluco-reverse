@@ -160,6 +160,7 @@ function persist(rec) {
     native.confirmAlarm(alarmId(rec.slot), rec.ts);
     updateGuard();
   }
+  if ((rec.type === 'meal' || rec.type === 'tablet') && !rec.deleted && native.isNative && !isCaregiver()) confirmDoneAlarms();
   dispatchAlerts();
   return rec;
 }
@@ -254,7 +255,7 @@ async function scheduleReminders() {
       id: alarmId(d.id),
       hour,
       minute,
-      route: `dose/${d.id}`,
+      route: `take/${d.id}`,
       slot: d.id,
       kind: d.kind,
       insulin: d.insulin,
@@ -279,9 +280,25 @@ async function scheduleReminders() {
   saveCrisisTexts();
   const medRems = generalTimes(S.plan.meds ?? []).slice(0, 60).map((x, i) => {
     const [hour, minute] = x.at.split(':').map(Number);
-    return { id: 200 + i, hour, minute, gentle: true, repeat: false, route: 'meds', title: t('med_rem_title', x.name), body: medLine(x), clip: '' };
+    const slot = MED_CARD[x.when];
+    return {
+      id: 200 + i, hour, minute, gentle: true, repeat: false, route: slot ? `take/${slot}` : 'meds',
+      title: t('med_rem_title', x.name), body: medLine(x), clip: '',
+      doneLabel: t('med_rem_done'),
+      doneRecord: JSON.stringify({ type: 'tablet', med: x.medId, name: x.name, when: x.when, amount: x.amount }),
+    };
   });
-  await native.setDailyAlarms([...alarms, snack, ...medRems], { ...S.settings.alarm, ntfyTopic: S.settings.ntfyTopic || '', planUpdatedAt: S.plan.updatedAt ?? 0 }).catch(() => {});
+  // Meal time: a gentle "have you eaten?" with an "Ate it" button (no full-screen alarm).
+  const mealRems = ['breakfast', 'lunch', 'dinner'].map((slot, i) => {
+    const [hour, minute] = mealAtFor(slot).split(':').map(Number);
+    return {
+      id: MEAL_REM_BASE + i, hour, minute, gentle: true, repeat: false, route: `ate/${slot}`,
+      title: t('meal_rem_title', slotName(slot)), body: t('meal_rem_body'), clip: '',
+      doneLabel: t('meal_rem_done'),
+      doneRecord: JSON.stringify({ type: 'meal', slot, size: 'normal', fromReminder: true }),
+    };
+  });
+  await native.setDailyAlarms([...alarms, snack, ...medRems, ...mealRems], { ...S.settings.alarm, ntfyTopic: S.settings.ntfyTopic || '', planUpdatedAt: S.plan.updatedAt ?? 0 }).catch(() => {});
   confirmDoneAlarms();
   updateGuard();
   // asks for notification permission and clears the old plain snack/menu notifications
@@ -376,11 +393,22 @@ function updateGuard() {
 }
 
 // Doses already logged today (here or on the caregiver's phone) must not ring.
+const MEAL_REM_BASE = 70;
 function confirmDoneAlarms() {
   for (const d of S.plan.doses) {
     const done = todayDose(d.id);
     if (done) native.confirmAlarm(alarmId(d.id), done.ts);
   }
+  if (isCaregiver()) return;
+  // meals and medicines already logged today: their reminders stay quiet
+  ['breakfast', 'lunch', 'dinner'].forEach((slot, i) => {
+    const m = mealToday(slot);
+    if (m) native.confirmAlarm(MEAL_REM_BASE + i, m.ts);
+  });
+  generalTimes(S.plan.meds ?? []).slice(0, 60).forEach((x, i) => {
+    const r = activeLog().find((e) => e.type === 'tablet' && e.med === x.medId && isToday(e.ts) && (!e.when || e.when === x.when));
+    if (r) native.confirmAlarm(200 + i, r.ts);
+  });
 }
 
 // A record from the cloud: only known shapes, numbers as numbers (it is shown as HTML later).
@@ -528,6 +556,8 @@ const VIEWS = {
   joincode: viewJoinCode,
   account: viewAccount,
   whose: viewWhose,
+  take: viewTake,
+  ate: viewAte,
   patient: viewPatientInfo,
   mine: viewMine,
   people: viewPeople,
@@ -999,8 +1029,235 @@ function miniRing(frac, text, tone, label, act, to) {
   </button>`;
 }
 
+
+// === Today: the patient's day in four times, each with simple ticks ==========================
+// Sugar, insulin, medicines and food are separate one-tap entries. A tick that is done is never
+// asked again. Meter readings land on the time they are nearest to (7:15 → breakfast at 7:30).
+const DAY_SLOTS = ['breakfast', 'lunch', 'dinner', 'night'];
+const SLOT_OF_CTX = { fasting: 'breakfast', pre_lunch: 'lunch', pre_dinner: 'dinner', bedtime: 'night' };
+const MED_CARD = { morning: 'breakfast', noon: 'lunch', afternoon: 'lunch', evening: 'dinner', night: 'night', bedtime: 'night' };
+const NEAR_MIN = 90; // a reading this close to a time belongs to it
+const minOfTs = (ts) => {
+  const d = new Date(ts);
+  return d.getHours() * 60 + d.getMinutes();
+};
+const slotTime = (slot) => injectAtFor(slot);
+
+// Which time of day a reading belongs to: { slot, after } or null.
+function slotOfReading(r) {
+  if (SLOT_OF_CTX[r.context]) return { slot: SLOT_OF_CTX[r.context], after: false };
+  const m = minOfTs(r.ts);
+  if (r.context === 'post_meal') {
+    const meal = ['breakfast', 'lunch', 'dinner'].filter((s) => minutesOf(mealAtFor(s)) <= m).at(-1);
+    return meal ? { slot: meal, after: true } : null;
+  }
+  if (r.context === 'night_3am') return null;
+  let best = null;
+  for (const s of DAY_SLOTS) {
+    const diff = Math.abs(m - minutesOf(slotTime(s)));
+    if (diff <= NEAR_MIN && (!best || diff < best.diff)) best = { slot: s, after: false, diff };
+  }
+  return best;
+}
+
+// The sugar to dose with: from the last 1½ h, taken before this meal (an after-meal reading never counts).
+const preReading = (slot) =>
+  readingsSorted()
+    .filter((r) => Date.now() - r.ts < 90 * 60000 && r.context !== 'post_meal' && (slotOfReading(r)?.slot ?? slot) === slot)
+    .at(-1);
+const medsAt = (slot) => generalTimes(S.plan.meds ?? []).filter((x) => MED_CARD[x.when] === slot);
+const medTaken = (x) =>
+  activeLog().some((e) => e.type === 'tablet' && e.med === x.medId && isToday(e.ts) && (!e.when || e.when === x.when));
+const mealToday = (slot) => activeLog().filter((e) => e.type === 'meal' && e.slot === slot && isToday(e.ts)).at(-1);
+
+function dayStatus(slot) {
+  const rs = activeLog().filter((e) => e.type === 'reading' && isToday(e.ts));
+  const mine = (after) => rs.filter((r) => {
+    const s = slotOfReading(r);
+    return s && s.slot === slot && s.after === after;
+  }).at(-1);
+  const dose = doseById(slot);
+  const meds = medsAt(slot);
+  return {
+    slot,
+    time: dose?.injectAt ?? slotTime(slot),
+    reading: mine(false),
+    after: mine(true),
+    dose,
+    doseRec: dose ? todayDose(slot) : null,
+    meds,
+    medsDone: meds.filter(medTaken).length,
+    meal: slot === 'night' ? null : mealToday(slot),
+    hasMeal: slot !== 'night',
+  };
+}
+
+// The four cards, or fewer: the bedtime card only when something happens then.
+function dayCards() {
+  const now = minOfTs(Date.now());
+  return DAY_SLOTS.map(dayStatus)
+    .filter((d) => d.hasMeal || d.dose || d.meds.length || d.reading)
+    .map((d) => {
+      const past = now > minutesOf(d.time) + 60;
+      const chip = (done, ic, text, act, extra = '') =>
+        `<button class="tick ${done ? 'done' : past ? 'late' : ''}" data-act="${act}" data-slot="${d.slot}" ${extra}><span class="tick-ic">${done ? icon('check') : icon(ic)}</span><span>${text}</span></button>`;
+      const chips = [
+        chip(!!d.reading, 'drop', d.reading ? `${t('tk_sugar')} <b>${d.reading.value}</b>` : t('tk_sugar'), 'tk_sugar'),
+        d.dose ? chip(!!d.doseRec, 'syringe', d.doseRec ? (d.doseRec.action === 'skip' ? t('tk_skipped') : `<b>${d.doseRec.units}</b> ${t('units')}`) : `${esc(d.dose.name)} ${doseUnits(d.dose)}`, 'tk_take') : '',
+        d.meds.length ? chip(d.medsDone === d.meds.length, 'pill', `${t('tk_meds')} ${loc(d.medsDone)}/${loc(d.meds.length)}`, 'tk_take') : '',
+        d.hasMeal ? chip(!!d.meal, 'food', d.meal ? (d.meal.skipped ? t('tk_no_meal') : t('tk_ate')) : t('tk_food'), 'tk_ate') : '',
+      ].join('');
+      const allDone = !!d.reading && (!d.dose || d.doseRec) && d.medsDone === d.meds.length && (!d.hasMeal || d.meal);
+      return `<section class="day-card ${allDone ? 'all-done' : ''}">
+        <div class="day-card-head"><span class="bubble">${icon(SLOT_ICON[d.slot] ?? 'clock')}</span><b>${slotName(d.slot)}</b><span class="day-time">${allDone ? icon('check') : loc(d.time)}</span></div>
+        <div class="ticks">${chips}</div>
+        ${d.after ? `<div class="day-after">${t('tk_after', d.after.value)}</div>` : ''}
+      </section>`;
+    })
+    .join('');
+}
+
+// Which time the big buttons open: the first one not done that has started, else the next.
+function currentSlot(need) {
+  const now = minOfTs(Date.now());
+  const list = DAY_SLOTS.map(dayStatus).filter(need);
+  return (list.filter((d) => minutesOf(d.time) - 90 <= now).at(-1) ?? list[0])?.slot ?? null;
+}
+const takeOpen = (d) => (d.dose && !d.doseRec) || d.medsDone < d.meds.length;
+
+function quickButtons() {
+  return `<div class="quick3">
+    <button class="q3 sugar" data-act="tk_sugar"><span>${icon('drop')}</span><b>${t('q_sugar')}</b></button>
+    <button class="q3 dose" data-act="tk_take"><span>${icon('syringe')}</span><b>${t('q_dose')}</b></button>
+    <button class="q3 food" data-act="tk_ate"><span>${icon('food')}</span><b>${t('q_food')}</b></button>
+  </div>`;
+}
+
+// --- insulin and medicines for one time: one screen -----------------------------------------
+let take = null; // { slot, units, meal, at, tabs:Set }
+function viewTake(slot) {
+  if (!DAY_SLOTS.includes(slot)) return viewHome();
+  const d = dayStatus(slot);
+  if (!take || take.slot !== slot) take = { slot, units: null, meal: d.meal?.size === 'small' ? 'small' : d.meal?.skipped ? 'none' : 'normal', at: hhmm(Date.now()), tabs: new Set() };
+  const T = take;
+  const dose = d.dose;
+  let doseBlock = '';
+  if (dose && d.doseRec) {
+    const r = d.doseRec;
+    doseBlock = `<div class="done-card">${icon('check')}<div><b>${r.action === 'skip' ? t('tk_dose_skipped', esc(dose.name)) : t('tk_dose_done', esc(dose.name), r.units)}</b><span>${hhmm(r.ts)}</span></div>
+      <button class="link" data-act="tk_undo" data-id="${esc(r.id)}">${t('fix_mistake')}</button></div>`;
+  } else if (dose && isMissed(slot)) {
+    doseBlock = `<div class="alert orange">${icon('clock')}<div><strong>${t('missed_title')}</strong>${t('missed_body')}</div></div>
+      <button class="btn" data-act="tk_skip">${t('tk_skip_dose')}</button>`;
+  } else if (dose) {
+    const recent = preReading(slot);
+    if (dose.kind === 'bolus' && recent && recent.value < LIMITS.HYPO) {
+      doseBlock = `<div class="alert red">${icon('alert')}<div><strong>${t('tk_low_first', recent.value)}</strong></div></div>
+        <button class="btn btn-primary btn-lg" data-act="go" data-to="low">${icon('down')} ${t('low_tile')}</button>`;
+    } else {
+      let units;
+      let why = '';
+      if (dose.kind === 'bolus') {
+        const sug = suggestBolus(S.plan, slot, recent?.value ?? null, T.meal);
+        if (sug.action === 'skip') units = 0;
+        else units = sug.units;
+        why = sug.action === 'skip' ? t('tk_why_skip') : recent ? t('tk_why_reading', recent.value, hhmm(recent.ts)) : t('tk_why_none');
+      } else units = doseUnits(dose);
+      if (T.units == null || T.autoFor !== `${T.meal}|${units}`) {
+        T.units = units;
+        T.autoFor = `${T.meal}|${units}`;
+      }
+      const mealSeg = dose.kind === 'bolus'
+        ? `<div class="seg tk-meal">${['normal', 'small', 'none'].map((m) => `<button class="${T.meal === m ? 'on' : ''}" data-act="tk_meal" data-v="${m}">${t(`tk_meal_${m}`)}</button>`).join('')}</div>`
+        : '';
+      doseBlock = `${mealSeg}
+        <section class="card tk-dose">
+          <div class="tk-name">${icon('syringe')} ${esc(dose.name)}</div>
+          <div class="tk-units">
+            <button data-act="tk_amt" data-d="-1" aria-label="−">−</button>
+            <output id="tk-units">${T.units}</output>
+            <button data-act="tk_amt" data-d="1" aria-label="+">+</button>
+          </div>
+          <div class="tk-unit-label">${t('units')}${T.units !== dose.base ? ` · ${t('tk_planned', dose.base)}` : ''}</div>
+          ${why ? `<div class="tk-why">${why}</div>` : ''}
+        </section>
+        ${dose.kind === 'bolus' && !recent ? `<button class="link" data-act="tk_sugar" data-slot="${slot}">${icon('drop')} ${t('tk_check_first')}</button>` : ''}`;
+    }
+  }
+  const pending = d.meds.filter((x) => !medTaken(x));
+  const medsBlock = d.meds.length
+    ? `<div class="section-title">${t('tk_meds_title')}</div><section class="card tk-meds">${d.meds
+        .map((x) => medTaken(x)
+          ? `<div class="check-row done">${icon('check')} ${esc(x.name)} · ${medLine(x)}</div>`
+          : `<label class="check-row"><input type="checkbox" data-act="tk_tab" data-id="${esc(x.medId)}|${esc(x.when)}" ${T.tabs.has(`${x.medId}|${x.when}`) ? 'checked' : ''}>${icon('pill')} ${esc(x.name)} · ${medLine(x)}</label>`)
+        .join('')}</section>`
+    : '';
+  const canSave = (dose && !d.doseRec && !isMissed(slot) && doseBlock.includes('tk-units')) || pending.length;
+  return `<div class="page take">${flowHead(slotName(slot))}
+    ${doseBlock}
+    ${medsBlock}
+    ${canSave ? `<div class="taken-at"><span>${icon('clock')} ${t('taken_at')}</span><input id="tk-at" type="time" value="${T.at}"></div>
+      <button class="btn btn-primary btn-lg" data-act="tk_save">${icon('check')} ${t('tk_save')}</button>
+      ${dose && !d.doseRec && doseBlock.includes('tk-units') ? `<button class="link" data-act="tk_skip">${t('tk_skip_dose')}</button>` : ''}` : `<button class="btn btn-primary btn-lg" data-act="home">${icon('home')} ${t('home')}</button>`}
+  </div>`;
+}
+
+// --- food for one meal: one screen, no insulin questions ------------------------------------
+function viewAte(slot) {
+  if (!['breakfast', 'lunch', 'dinner'].includes(slot)) return viewHome();
+  const d = dayStatus(slot);
+  const lang = getLang();
+  let menuDishes = [];
+  try {
+    menuDishes = homeFoods() ? currentMenu(0).menu.meals[slot] ?? [] : [];
+  } catch (err) {
+    logError(err, 'ate menu');
+  }
+  const dishList = menuDishes.length ? `<ul class="ate-menu">${dishesToItems(menuDishes).map((it) => `<li>${esc(foodName(it.id))}<small>${esc(portion(it.id))}</small></li>`).join('')}</ul>` : '';
+  const insulinAsk = d.meal && !d.meal.skipped && d.dose?.kind === 'bolus' && !d.doseRec && !isMissed(slot)
+    ? `<section class="card ask-card"><b>${t('tk_ask_insulin', esc(d.dose.name))}</b>
+        <div class="row"><button class="btn btn-primary" data-act="go" data-to="take/${slot}">${icon('syringe')} ${t('tk_ask_yes')}</button><button class="btn" data-act="tk_skip" data-slot="${slot}">${t('tk_ask_no')}</button></div></section>`
+    : '';
+  if (d.meal) {
+    const m = d.meal;
+    const what = m.skipped ? t('tk_no_meal') : (m.items ?? []).map((it) => foodName(it.id)).join(', ') || t('tk_ate');
+    return `<div class="page ate">${flowHead(t('tk_food_of', slotName(slot)))}
+      <div class="done-card">${icon('check')}<div><b>${esc(what)}</b><span>${hhmm(m.ts)}${m.kcal ? ` · ${loc(m.kcal)} kcal` : ''}</span></div>
+        <button class="link" data-act="tk_undo" data-id="${esc(m.id)}">${t('fix_mistake')}</button></div>
+      ${insulinAsk}
+      <button class="btn btn-primary btn-lg" data-act="home">${icon('home')} ${t('home')}</button>
+    </div>`;
+  }
+  void lang;
+  return `<div class="page ate">${flowHead(t('tk_food_of', slotName(slot)))}
+    ${menuDishes.length ? `<section class="card"><div class="sub-title">${t('tk_today_menu')}</div>${dishList}</section>
+      <button class="btn btn-primary btn-lg" data-act="tk_meal_log" data-slot="${slot}" data-v="menu">${icon('check')} ${t('tk_ate_menu')}</button>`
+      : `<button class="btn btn-primary btn-lg" data-act="tk_meal_log" data-slot="${slot}" data-v="normal">${icon('check')} ${t('tk_ate_normal')}</button>`}
+    <div class="ate-more">
+      <button class="btn" data-act="tk_meal_log" data-slot="${slot}" data-v="small">${t('tk_ate_less')}</button>
+      <button class="btn" data-act="offplan_log" data-slot="${slot}">${t('tk_ate_other')}</button>
+      <button class="btn" data-act="tk_meal_log" data-slot="${slot}" data-v="none">${t('tk_ate_none')}</button>
+    </div>
+  </div>`;
+}
+
+function readTake() {
+  const at = document.getElementById('tk-at')?.value;
+  if (at && take) take.at = at;
+  const u = document.getElementById('tk-units');
+  if (u && take) take.units = Number(u.textContent);
+}
+const takeTs = () => {
+  const [h, m] = String(take?.at || hhmm(Date.now())).split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() - Date.now() > 3600000) d.setDate(d.getDate() - 1);
+  return Math.min(d.getTime(), Date.now());
+};
+
 function viewHome() {
   if (isCaregiver()) return viewFamily();
+  take = null;
   flow = lowFlow = highFlow = readingFlow = foodFlow = pantryDraft = null;
   const alerts = currentAlerts().filter((a) => a.level !== 'info');
   const sched = todaySchedule();
@@ -1076,10 +1333,9 @@ function viewHome() {
     ${S.settings.meter && meterSupported()
       ? `<button class="meter-big" data-act="ms_start"><span class="mb-ic">${icon('bluetooth')}</span><span><b>${t('ms_title')}</b><span>${S.settings.meter.lastSync ? t('ms_last', ago(S.settings.meter.lastSync)) : t('ms_first')}</span></span>${icon('chev')}</button>`
       : ''}
-    <section class="card ring-card">
-      ${bigRing(doneCount / sched.length, `${numL(Math.round((doneCount / sched.length) * 100))}%`, t('ring_label'))}
-      ${nextPill}
-    </section>
+    ${quickButtons()}
+    <div class="section-title">${t('today_schedule')}</div>
+    <div class="day-cards">${dayCards()}</div>
     ${minis}
     <div class="pill-row">
       <button class="pill-btn coral" data-act="go" data-to="low">${icon('down')} ${t('low_tile')}</button>
@@ -1091,8 +1347,6 @@ function viewHome() {
             <div><b>${t('tomorrow_title')}</b><div class="muted small">${t('tomorrow_card')}</div></div>${icon('chev')}</button>`
         : ''
     }
-    <div class="section-title">${t('today_schedule')}</div>
-    <section class="card schedule">${schedule}</section>
     ${S.plan.doses.length || generalTimes(S.plan.meds ?? []).length ? `<button class="btn btn-soft" data-act="go" data-to="dosebook">${icon('check')} ${t('db_open')}</button>` : ''}
     ${sync.status.state === 'error' ? `<p class="muted small center">Sync: ${esc(sync.status.error)}</p>` : ''}`,
   );
@@ -1427,7 +1681,9 @@ const minutesOf = (hm) => {
   return h * 60 + m;
 };
 
-// What a meter reading was, from its meal marker or else from the time of day.
+// What a meter reading was: the meter's own meal marker, else the daily time it is nearest to
+// (within 1½ h). Example: 7:15 with breakfast insulin at 7:30 → "fasting" (the breakfast reading).
+const CTX_OF_SLOT = { breakfast: 'fasting', lunch: 'pre_lunch', dinner: 'pre_dinner', night: 'bedtime' };
 function contextAt(ts, meal) {
   if (meal === 3) return 'fasting';
   if (meal === 5) return 'bedtime';
@@ -1435,15 +1691,18 @@ function contextAt(ts, meal) {
   const d = new Date(ts);
   const m = d.getHours() * 60 + d.getMinutes();
   if (d.getHours() < 5) return 'night_3am';
-  const near = (id) => Math.abs(m - minutesOf(injectAtFor(id))) <= 60;
-  if (near('breakfast') || m < minutesOf(injectAtFor('breakfast'))) return 'fasting';
-  if (near('lunch')) return 'pre_lunch';
-  if (near('dinner')) return 'pre_dinner';
-  if (m >= minutesOf(injectAtFor('night')) - 60) return 'bedtime';
+  let best = null;
+  for (const id of ['breakfast', 'lunch', 'dinner', 'night']) {
+    const diff = Math.abs(m - minutesOf(injectAtFor(id)));
+    if (diff <= 90 && (!best || diff < best.diff)) best = { id, diff };
+  }
+  // after a meal (1½–3 h) wins over "near the next time" only when it is not closer to that time
   for (const id of ['breakfast', 'lunch', 'dinner']) {
     const after = m - minutesOf(mealAtFor(id));
-    if (after >= 90 && after <= 180) return 'post_meal';
+    if (after >= 90 && after <= 180 && (!best || best.diff > 45)) return 'post_meal';
   }
+  if (best) return CTX_OF_SLOT[best.id];
+  if (m < minutesOf(injectAtFor('breakfast'))) return 'fasting';
   return 'other';
 }
 
@@ -1516,6 +1775,20 @@ async function importMeterPending() {
   const added = [];
   for (const rec of r.records ?? []) {
     if (S.log.some((e) => e.id === rec.id)) continue;
+    if (rec.type === 'reading' && rec.source === 'meter') rec.context = contextAt(rec.ts, rec.mealFlag ?? undefined);
+    if (rec.type === 'meal' && rec.fromReminder && !rec.items) {
+      // "Ate it" pressed on the meal reminder: that day's menu
+      try {
+        rec.items = homeFoods() ? dishesToItems(currentMenu(0).menu.meals[rec.slot] ?? []) : [];
+        Object.assign(rec, mealTotals(rec.items));
+      } catch {
+        rec.items = [];
+      }
+      if (mealToday(rec.slot)) {
+        persist({ ...rec, deleted: true, duplicate: true });
+        continue;
+      }
+    }
     const dup = rec.type === 'dose' && rec.slot && activeLog().some((e) => e.type === 'dose' && e.slot === rec.slot && dayKey(e.ts) === dayKey(rec.ts));
     if (dup) {
       persist({ ...rec, deleted: true, duplicate: true }); // keeps the other phones in step
@@ -2634,6 +2907,8 @@ function viewFamily() {
       ${P.patient.phone ? `<a class="round-btn" href="tel:${esc(P.patient.phone)}" aria-label="${t('fam_call')}">${icon('phone')}</a>` : `<button class="round-btn" data-act="go" data-to="report" aria-label="${t('btn_report')}">${icon('file')}</button>`}
     </header>
     ${mineBanner()}
+    <div class="section-title">${t('today_schedule')}</div>
+    <div class="day-cards">${dayCards()}</div>
     ${pres?.lastSeen && Date.now() - Math.max(pres.lastSeen, pres.bgSync ?? 0) > 3 * 3600000 ? `<div class="alert yellow">${icon('alert')}<div>${t('fam_quiet', ago(Math.max(pres.lastSeen, pres.bgSync ?? 0)))}</div></div>` : ''}
     ${alerts.map((a) => alertCard(a)).join('')}
     ${sugarCard}
@@ -4427,6 +4702,112 @@ const ACTIONS = {
     go('home');
   },
   role_patient: () => startPatientFamily(),
+  tk_sugar: (el) => {
+    const slot = el.dataset.slot;
+    readingFlow = { ctx: slot ? CTX_FOR_SLOT[slot] : guessContext() };
+    go('reading');
+  },
+  tk_take: (el) => {
+    const slot = el.dataset.slot ?? currentSlot(takeOpen) ?? currentSlot((d) => d.dose || d.meds.length);
+    if (!slot) return go('meds');
+    take = null;
+    go(`take/${slot}`);
+  },
+  tk_ate: (el) => {
+    const slot = el.dataset.slot ?? currentSlot((d) => d.hasMeal && !d.meal) ?? mealSlotGuess();
+    if (slot === 'snack') return ACTIONS.food_log();
+    go(`ate/${slot}`);
+  },
+  tk_meal: (el) => {
+    readTake();
+    take.meal = el.dataset.v;
+    render();
+  },
+  tk_amt: (el) => {
+    const o = document.getElementById('tk-units');
+    take.units = Math.max(0, Math.min(100, Number(o.textContent) + Number(el.dataset.d)));
+    o.textContent = take.units;
+  },
+  tk_tab: (el) => {
+    if (el.checked) take.tabs.add(el.dataset.id);
+    else take.tabs.delete(el.dataset.id);
+  },
+  tk_save: () => {
+    readTake();
+    const slot = take.slot;
+    const d = dayStatus(slot);
+    const ts = takeTs();
+    const done = [];
+    if (d.dose && !d.doseRec && !isMissed(slot) && document.getElementById('tk-units')) {
+      const dose = d.dose;
+      const units = take.units;
+      if ((units < dose.min || units > dose.max) && !confirm(t('outside_confirm', units, dose.min, dose.max))) return;
+      const recent = preReading(slot);
+      const extra = units < dose.min || units > dose.max ? { outside: true } : {};
+      if (dose.kind === 'bolus') {
+        const s = suggestBolus(S.plan, slot, recent?.value ?? null, take.meal);
+        persist({ type: 'dose', kind: 'bolus', slot, insulin: dose.insulin, medId: dose.medId, units, suggested: s.units ?? 0, base: dose.base, delta: units - dose.base, ts, reading: recent?.value ?? null, meal: take.meal, via: 'today', ...extra });
+      } else {
+        persist({ type: 'dose', kind: 'basal', slot, insulin: dose.insulin, medId: dose.medId, units, base: dose.base, delta: units - dose.base, ts, reading: recent?.value ?? null, via: 'today', ...extra });
+      }
+      done.push(t('dose_logged', units, esc(dose.name)));
+    }
+    for (const key of take.tabs) {
+      const [med, when] = key.split('|');
+      const x = d.meds.find((m) => m.medId === med && m.when === when);
+      if (x && !medTaken(x)) persist({ type: 'tablet', med, name: x.name, when, amount: x.amount, ts });
+    }
+    if (take.tabs.size) done.push(t('tk_meds_logged', loc(take.tabs.size)));
+    take = null;
+    if (!done.length) {
+      toast = t('tk_nothing');
+      return render();
+    }
+    native.haptic('HEAVY');
+    if (S.settings.alarm.voice && d.dose) native.playClip(clip('dose_done'));
+    celebrate({ title: done.join(' · ') });
+  },
+  tk_skip: (el) => {
+    const slot = el.dataset.slot ?? take?.slot;
+    const dose = doseById(slot);
+    if (!dose || todayDose(slot)) return render();
+    persist({ type: 'dose', kind: dose.kind, slot, insulin: dose.insulin, medId: dose.medId, action: 'skip', units: 0, delta: 0, meal: take?.meal ?? 'none', via: 'today' });
+    take = null;
+    toast = t('skip_logged');
+    go('home');
+  },
+  tk_undo: (el) => {
+    const rec = S.log.find((e) => e.id === el.dataset.id);
+    if (!rec || !confirm(t('tk_undo_q'))) return;
+    rec.deleted = true;
+    persist(rec);
+    take = null;
+    render();
+  },
+  tk_meal_log: (el) => {
+    const slot = el.dataset.slot;
+    const v = el.dataset.v;
+    if (mealToday(slot)) return render();
+    let items = [];
+    if (v === 'menu') {
+      try {
+        items = dishesToItems(currentMenu(0).menu.meals[slot] ?? []);
+      } catch (err) {
+        logError(err, 'menu items');
+      }
+    }
+    if (v === 'none') persist({ type: 'meal', slot, items: [], kcal: 0, skipped: true });
+    else if (v === 'small') {
+      const full = homeFoods() ? (() => { try { return dishesToItems(currentMenu(0).menu.meals[slot] ?? []); } catch { return []; } })() : [];
+      const half = full.map((it) => ({ ...it, qty: (it.qty ?? 1) / 2 }));
+      persist({ type: 'meal', slot, items: half, ...mealTotals(half), size: 'small' });
+    } else persist({ type: 'meal', slot, items, ...mealTotals(items), size: 'normal' });
+    native.haptic('MEDIUM');
+    toast = t('saved');
+    const d = dayStatus(slot);
+    if (v !== 'none' && d.dose?.kind === 'bolus' && !d.doseRec && !isMissed(slot)) return render(); // ask about the insulin
+    go('home');
+  },
   role_member: () => {
     Object.assign(S.settings, { memberOnly: true, welcomed: true });
     save(S);
@@ -4955,7 +5336,8 @@ const ACTIONS = {
     rec.deleted = true;
     persist(rec);
     flow = null;
-    go(`dose/${rec.slot}`);
+    take = null;
+    go(rec.type === 'dose' && DAY_SLOTS.includes(rec.slot) ? `take/${rec.slot}` : 'home');
   },
   say: async (el) => {
     const r = await native.speak(el.dataset.text);

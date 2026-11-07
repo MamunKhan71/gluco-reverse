@@ -1149,3 +1149,52 @@ a.round-btn { text-decoration: none; }
 .mine-banner b { display: block; }
 .mine-banner span span { color: var(--muted); font-size: 0.85rem; }
 .mine-banner > .ic { color: var(--muted); }
+
+/* Today: three big buttons and the day cards */
+.quick3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 6px 0 4px; }
+.q3 { display: grid; justify-items: center; gap: 8px; padding: 16px 6px; border: 0; border-radius: 22px; font: inherit; cursor: pointer; color: var(--text); background: var(--surface); box-shadow: 0 6px 22px rgba(40, 40, 110, 0.07); }
+.q3 span { width: 54px; height: 54px; border-radius: 18px; display: grid; place-items: center; }
+.q3 span .ic { width: 28px; height: 28px; }
+.q3 b { font-size: 0.98rem; line-height: 1.2; text-align: center; }
+.q3.sugar span { background: var(--danger-soft, #fde8ea); color: var(--danger); }
+.q3.dose span { background: var(--primary-soft); color: var(--primary-strong); }
+.q3.food span { background: var(--warn-soft); color: var(--warn); }
+.q3:active { transform: scale(0.97); }
+.day-cards { display: grid; gap: 10px; margin-bottom: 14px; }
+.day-card { background: var(--surface); border-radius: 22px; padding: 12px 12px 10px; box-shadow: 0 6px 22px rgba(40, 40, 110, 0.06); }
+.day-card.all-done { background: var(--ok-soft); }
+.day-card-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; margin-bottom: 10px; }
+.day-card-head .bubble { width: 36px; height: 36px; }
+.day-card-head b { font-size: 1.08rem; }
+.day-time { color: var(--muted); font-weight: 600; }
+.day-card.all-done .day-time { color: var(--ok); }
+.ticks { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
+.tick { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 10px; border-radius: 14px; border: 1.5px dashed var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 0.92rem; text-align: left; cursor: pointer; }
+.tick-ic { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--muted); }
+.tick-ic .ic { width: 17px; height: 17px; }
+.tick.done { border-style: solid; border-color: transparent; background: var(--surface); }
+.tick.done .tick-ic { background: var(--ok); color: #fff; }
+.tick.late:not(.done) { border-color: var(--warn); }
+.tick.late:not(.done) .tick-ic { color: var(--warn); }
+.day-after { margin-top: 8px; color: var(--muted); font-size: 0.85rem; }
+/* one-screen insulin and food */
+.done-card { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; padding: 14px; border-radius: 18px; background: var(--ok-soft); margin-bottom: 12px; }
+.done-card > .ic { width: 32px; height: 32px; color: var(--ok); }
+.done-card b { display: block; }
+.done-card span { color: var(--muted); font-size: 0.88rem; }
+.done-card .link { grid-column: 1 / -1; justify-self: start; }
+.tk-dose { text-align: center; }
+.tk-name { font-weight: 700; display: flex; gap: 8px; justify-content: center; align-items: center; }
+.tk-units { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 10px; margin: 10px 0 2px; }
+.tk-units button { height: 64px; border-radius: 18px; border: 0; background: var(--primary-soft); color: var(--primary-strong); font-size: 2rem; font-weight: 700; cursor: pointer; }
+.tk-units output { font-family: 'Poppins', sans-serif; font-size: 3.4rem; font-weight: 700; line-height: 1; }
+.tk-unit-label { color: var(--muted); }
+.tk-why { margin-top: 8px; font-size: 0.86rem; color: var(--muted); }
+.tk-meal { margin-bottom: 10px; }
+.tk-meds .check-row.done { color: var(--ok); display: flex; gap: 8px; align-items: center; padding: 10px 4px; }
+.ate-menu { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+.ate-menu li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--bg); font-weight: 600; }
+.ate-menu small { color: var(--muted); font-weight: 400; }
+.ate-more { display: grid; gap: 8px; margin-top: 10px; }
+.ask-card b { display: block; margin-bottom: 10px; }
+.ask-card .row .btn { flex: 1; }

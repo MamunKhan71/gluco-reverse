@@ -32,6 +32,10 @@ public class AlarmReceiver extends BroadcastReceiver {
             AlarmScheduler.doseAction(c, id, AlarmScheduler.ACTION_TAKEN.equals(action));
             return;
         }
+        if (AlarmScheduler.ACTION_DONE.equals(action)) {
+            AlarmScheduler.recordAction(c, id);
+            return;
+        }
         if (AlarmScheduler.ACTION_SNOOZE.equals(action)) {
             int minutes = intent.getIntExtra("minutes", 0);
             if (minutes > 0) {
@@ -142,6 +146,11 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setVibrate(new long[] {0, 400, 200, 400})
                 .setContentIntent(openPi)
                 .setAutoCancel(true);
+        if (!item.optString("doneLabel").isEmpty() && item.has("doneRecord")) {
+            Intent done = new Intent(c, AlarmReceiver.class).setAction(AlarmScheduler.ACTION_DONE).putExtra("id", id);
+            PendingIntent donePi = PendingIntent.getBroadcast(c, id * 100 + 7, done, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            nb.addAction(0, item.optString("doneLabel"), donePi);
+        }
         String phone = item.optString("phone");
         if (!phone.isEmpty()) {
             Intent dial = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + phone)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

@@ -328,6 +328,7 @@ final class MeterReader {
             rec.put("type", "reading");
             rec.put("value", x.mmol);
             rec.put("context", contextAt(c, x.ts, r.meals.get(x.seq)));
+            if (r.meals.get(x.seq) != null) rec.put("mealFlag", r.meals.get(x.seq));
             rec.put("ts", x.ts);
             rec.put("source", "meter");
             rec.put("seq", x.seq);
@@ -371,6 +372,15 @@ final class MeterReader {
 
     // Like contextAt() in the app: the meter's meal mark, else the time of day compared with the
     // insulin times saved with the alarms.
+    private static String slotContext(String slot) {
+        switch (slot) {
+            case "breakfast": return "fasting";
+            case "lunch": return "pre_lunch";
+            case "dinner": return "pre_dinner";
+            default: return "bedtime";
+        }
+    }
+
     private static String contextAt(Context c, long ts, Integer meal) {
         if (meal != null && meal == 3) return "fasting";
         if (meal != null && meal == 5) return "bedtime";
@@ -393,10 +403,22 @@ final class MeterReader {
         cal.setTimeInMillis(ts);
         int m = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE);
         if (cal.get(Calendar.HOUR_OF_DAY) < 5) return "night_3am";
-        if (Math.abs(m - at.get("breakfast")) <= 60 || m < at.get("breakfast")) return "fasting";
-        if (Math.abs(m - at.get("lunch")) <= 60) return "pre_lunch";
-        if (Math.abs(m - at.get("dinner")) <= 60) return "pre_dinner";
-        if (m >= at.get("night") - 60) return "bedtime";
+        String best = null;
+        int bestDiff = 91;
+        for (String slot : new String[] {"breakfast", "lunch", "dinner", "night"}) {
+            int diff = Math.abs(m - at.get(slot));
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = slot;
+            }
+        }
+        if (best != null && bestDiff <= 45) return slotContext(best);
+        for (String slot : new String[] {"breakfast", "lunch", "dinner"}) {
+            int after = m - (at.get(slot) + 30);
+            if (after >= 90 && after <= 180) return "post_meal";
+        }
+        if (best != null) return slotContext(best);
+        if (m < at.get("breakfast")) return "fasting";
         for (String slot : new String[] {"breakfast", "lunch", "dinner"}) {
             int after = m - (at.get(slot) + 30);
             if (after >= 90 && after <= 180) return "post_meal";

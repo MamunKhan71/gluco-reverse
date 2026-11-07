@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever app files change so phones pick up the update.
-const VERSION = 'v67';
+const VERSION = 'v68';
 const FILES = [
   './',
   './index.html',

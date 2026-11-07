@@ -24,6 +24,7 @@ final class AlarmScheduler {
     static final String ACTION_SNOOZE = "com.family.sugarhelper.ALARM_SNOOZE";
     static final String ACTION_TAKEN = "com.family.sugarhelper.ALARM_TAKEN";
     static final String ACTION_SKIP = "com.family.sugarhelper.ALARM_SKIP";
+    static final String ACTION_DONE = "com.family.sugarhelper.ALARM_DONE";
     static final String PREFS = "sugar_alarms";
     static final int NOTIF_BASE = 7000;
     // A confirmation counts for an alarm scheduled up to this long after it.
@@ -128,6 +129,32 @@ final class AlarmScheduler {
      * "Taken" or "skip" pressed on a dose alarm: stop it, and record the dose (planned units,
      * now) for the app to pick up and for the family (SyncWorker), even with the app closed.
      */
+    /** "Ate it" / "Taken" on a meal or medicine reminder: logs the reminder's record for the app. */
+    static void recordAction(Context c, int id) {
+        org.json.JSONObject item = getItem(c, id);
+        long now = System.currentTimeMillis();
+        confirm(c, id, now);
+        dismissNotification(c, id);
+        if (item == null || !item.has("doneRecord")) return;
+        try {
+            org.json.JSONObject rec = new org.json.JSONObject(item.getString("doneRecord"))
+                    .put("id", "rem-" + id + "-" + now)
+                    .put("ts", now)
+                    .put("updatedAt", now)
+                    .put("by", "patient")
+                    .put("via", "reminder");
+            SharedPreferences p = prefs(c);
+            synchronized (MeterReader.PENDING_LOCK) {
+                org.json.JSONArray pending = new org.json.JSONArray(p.getString("meter_pending", "[]"));
+                pending.put(rec);
+                p.edit().putString("meter_pending", pending.toString()).commit();
+            }
+            SyncWorker.queue(c, rec);
+        } catch (Exception ignored) {
+            // nothing to log
+        }
+    }
+
     static void doseAction(Context c, int id, boolean taken) {
         org.json.JSONObject item = getItem(c, id);
         long now = System.currentTimeMillis();
