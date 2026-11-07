@@ -1346,6 +1346,63 @@ function nextStep() {
   return `<div class="next-step done"><span class="ns-ic">${icon('check')}</span><span class="ns-body"><b>${t('ns_all_done')}</b></span></div>`;
 }
 
+
+// === Simple home pieces ========================================================================
+// Last sugar: one big number, one word for what it means, when, and one line of advice.
+function simpleSugar() {
+  const last = readingsSorted().at(-1);
+  const meter = S.settings.meter && meterSupported() && !isCaregiver()
+    ? `<button class="ss-meter" data-act="ms_start">${icon('bluetooth')} ${t('sh_from_meter')}</button>`
+    : '';
+  if (!last) {
+    return `<section class="simple-sugar empty">
+      <div class="ss-label">${t('sh_title')}</div>
+      <p class="ss-msg">${t('ss_none')}</p>${meter}
+    </section>`;
+  }
+  const st = statusClass(last.value, last.context);
+  const old = !isToday(last.ts);
+  const tone = old ? 'old' : SH_TONE[st] ?? 'ok';
+  const urgent = ['low', 'severe_low'].includes(st) ? 'low' : st === 'very_high' ? 'high' : '';
+  return `<section class="simple-sugar tone-${tone}">
+    <div class="ss-row">
+      <div>
+        <div class="ss-label">${t(old ? 'sh_last_old' : 'sh_title')}</div>
+        <div class="ss-value">${last.value}<small>mmol/L</small></div>
+        <div class="ss-when">${esc(t(`ctx_${last.context}`))} · ${ago(last.ts)}</div>
+      </div>
+      <div class="ss-word">${old ? icon('clock') : icon(tone === 'ok' ? 'check' : 'alert')}<b>${old ? t('ss_not_today') : t(`st_${st}`)}</b></div>
+    </div>
+    <p class="ss-msg">${old ? t('sh_msg_old') : t(`sh_msg_${st}`)}</p>
+    ${urgent ? `<button class="sh-cta bad" data-act="go" data-to="${urgent}">${icon(urgent === 'low' ? 'down' : 'up')} ${t(urgent === 'low' ? 'sh_do_low' : 'sh_do_high')}</button>` : ''}
+    ${meter}
+  </section>`;
+}
+
+// Today's times as plain rows: a big tick when done, else what is still left. One tap opens it.
+function todayRows() {
+  const now = minOfTs(Date.now());
+  return DAY_SLOTS.map(dayStatus)
+    .filter((d) => d.hasMeal || d.dose || d.meds.length)
+    .map((d) => {
+      const left = [
+        !d.reading && (d.dose || d.slot === 'breakfast') ? t('tk_sugar') : '',
+        d.dose && !d.doseRec ? t('ss_insulin') : '',
+        d.medsDone < d.meds.length ? t('tk_meds') : '',
+        d.hasMeal && !d.meal ? t('tk_food') : '',
+      ].filter(Boolean);
+      const done = !left.length;
+      const late = !done && now > minutesOf(d.time) + 60;
+      const sub = done ? t('ss_all_done') : t(late ? 'ss_left_late' : 'ss_left', left.join(', '));
+      return `<button class="today-row ${done ? 'done' : late ? 'late' : ''}" data-act="tk_slot" data-slot="${d.slot}">
+        <span class="tr-ic">${icon(SLOT_ICON[d.slot] ?? 'clock')}</span>
+        <span class="tr-body"><b>${slotName(d.slot)}</b><span>${sub}</span></span>
+        <span class="tr-end">${done ? icon('check') : `<small>${loc(d.time)}</small>`}</span>
+      </button>`;
+    })
+    .join('');
+}
+
 function readTake() {
   const at = document.getElementById('tk-at')?.value;
   if (at && take) take.at = at;
@@ -1420,39 +1477,23 @@ function viewHome() {
 
   return tabPage(
     'home',
-    `<header class="home-head">
-      <div>
-        <div class="home-day">${today.toLocaleDateString(lang, { weekday: 'long' })}</div>
-        <div class="home-sub">${greeting()}, ${esc(S.plan.patient.name)} · ${today.toLocaleDateString(lang, { day: 'numeric', month: 'long' })}</div>
-      </div>
-      <button class="round-btn" data-act="go" data-to="report" aria-label="${t('btn_report')}">${icon('stethoscope')}</button>
+    `<header class="home-hello">
+      <b>${greeting()}, ${esc(S.plan.patient.name)}</b>
+      <span>${today.toLocaleDateString(lang, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
     </header>
-    ${mineBanner()}
     ${(S.plan.meds ?? []).length || S.plan.doses.length ? '' : `<button class="card med-start" data-act="go" data-to="med/new"><span class="med-ic pen">${icon('syringe')}</span><span><b>${t('med_start')}</b><span>${t('med_start_sub')}</span></span>${icon('chev')}</button>`}
-    ${alerts.map((a) => alertCard(a)).join('')}
-    ${basal.reason === 'need_3am' ? `<div class="alert info">${icon('moon')}<div>${t('basal_need_3am')}</div></div>` : ''}
-    ${stockStatus(S.state.stock ?? {}, S.log.filter((e) => !e.deleted), S.plan.meds ?? [])
-      .filter((s) => s.warn)
-      .map((s) => `<button class="alert yellow stock-alert" data-act="go" data-to="stock">${icon('box')}<div><strong>${esc(s.name ?? t(`s_${s.id}`))}</strong>${t(s.warn === 'replace' ? 'warn_replace' : 'warn_buy')}</div></button>`)
-      .join('')}
+    ${alerts.filter((a) => a.level === 'red' || a.level === 'orange').map((a) => alertCard(a)).join('')}
     ${nextStep()}
-    ${sugarHero()}
+    ${simpleSugar()}
     ${quickButtons()}
-    <div class="section-title">${t('today_schedule')}</div>
-    <div class="day-cards">${dayCards()}</div>
+    <div class="section-title">${t('ss_today')}</div>
+    <div class="today-rows">${todayRows()}</div>
     <div class="section-title">${t('feel_title')}</div>
     <div class="feel-row">
       <button class="feel low" data-act="go" data-to="low"><span>${icon('down')}</span><b>${t('feel_low')}</b><small>${t('feel_low_sub')}</small></button>
       <button class="feel high" data-act="go" data-to="high"><span>${icon('up')}</span><b>${t('feel_high')}</b><small>${t('feel_high_sub')}</small></button>
     </div>
-    ${
-      today.getHours() >= 18 && homeFoods()
-        ? `<button class="card tomorrow-card" data-act="tomorrow"><span class="bubble">${icon('chef')}</span>
-            <div><b>${t('tomorrow_title')}</b><div class="muted small">${t('tomorrow_card')}</div></div>${icon('chev')}</button>`
-        : ''
-    }
-    ${S.plan.doses.length || generalTimes(S.plan.meds ?? []).length ? `<button class="btn btn-soft" data-act="go" data-to="dosebook">${icon('check')} ${t('db_open')}</button>` : ''}
-    ${sync.status.state === 'error' ? `<p class="muted small center">Sync: ${esc(sync.status.error)}</p>` : ''}`,
+`,
   );
 }
 
@@ -2248,6 +2289,11 @@ function medLine(x) {
   const amt = isInsulin(x) ? loc(x.amount) : loc(amountText(x.amount));
   return [`${amt} ${medUnit(x.type, x.amount)}`, x.meal ? t(`meal_${x.meal}`) : ''].filter(Boolean).join(' · ');
 }
+// Medicines running out (shown in the menu, not on the patient's home screen).
+function stockWarnText() {
+  const w = stockStatus(S.state.stock ?? {}, S.log.filter((e) => !e.deleted), S.plan.meds ?? []).filter((x) => x.warn);
+  return w.length ? `⚠ ${w.map((x) => x.name ?? t(`s_${x.id}`)).join(', ')}: ${t('warn_buy')}` : '';
+}
 function medsSummary() {
   const n = (S.plan.meds ?? []).length;
   return n ? t('meds_count', loc(n)) : t('meds_none_short');
@@ -3010,7 +3056,6 @@ function viewFamily() {
       </div>
       ${P.patient.phone ? `<a class="round-btn" href="tel:${esc(P.patient.phone)}" aria-label="${t('fam_call')}">${icon('phone')}</a>` : `<button class="round-btn" data-act="go" data-to="report" aria-label="${t('btn_report')}">${icon('file')}</button>`}
     </header>
-    ${mineBanner()}
     <div class="section-title">${t('today_schedule')}</div>
     <div class="day-cards">${dayCards()}</div>
     ${pres?.lastSeen && Date.now() - Math.max(pres.lastSeen, pres.bgSync ?? 0) > 3 * 3600000 ? `<div class="alert yellow">${icon('alert')}<div>${t('fam_quiet', ago(Math.max(pres.lastSeen, pres.bgSync ?? 0)))}</div></div>` : ''}
@@ -3432,18 +3477,21 @@ function viewMore() {
     ${isCaregiver() ? `<section class="card menu">
       ${menuRow('go', 'account', 'user', t('account'), S.user ? S.user.email : t('account_login'))}
       ${menuRow('go', 'patient', 'heart', t('reg_edit_title'), patientSummary())}
+      ${S.settings.memberLink ? menuRow('go', 'mine', 'drop', t('mine_banner'), t('mine_sub', S.settings.memberLink.patient ?? '')) : ''}
       ${menuRow('go', 'ring', 'sound', t('ring_title'), t('ring_menu_sub'))}
       ${menuRow('go', 'meds', 'pill', t('meds_title'), medsSummary())}
       ${menuRow('go', 'whose', 'users', t('wh_title'), t('wh_menu_sub'))}
       ${menuRow('go', 'people', 'heart', t('pp_title'), people().length ? people().map((p) => p.name).join(', ') : t('pp_menu_sub'))}
       ${menuRow('go', 'cgalerts', 'bell', t('cg_alerts'), S.settings.ntfyTopic ? t('cg_alerts_on') : t('cg_alerts_off'))}
       ${menuRow('go', 'settings', 'syringe', t('cg_plan'), t('cg_plan_sub'))}
-      ${menuRow('go', 'stock', 'pill', t('stock_title'))}
+      ${menuRow('go', 'stock', 'pill', t('stock_title'), stockWarnText())}
       ${menuRow('go', 'report', 'file', t('btn_report'))}
     </section>` : `<section class="card menu">
       ${menuRow('go', 'account', 'user', t('account'), S.user ? S.user.email : t('account_login'))}
       ${menuRow('go', 'patient', 'heart', t('reg_edit_title'), patientSummary())}
+      ${S.settings.memberLink ? menuRow('go', 'mine', 'drop', t('mine_banner'), t('mine_sub', S.settings.memberLink.patient ?? '')) : ''}
       ${menuRow('go', 'meds', 'pill', t('meds_title'), medsSummary())}
+      ${S.plan.doses.length || generalTimes(S.plan.meds ?? []).length ? menuRow('go', 'dosebook', 'check', t('db_open')) : ''}
       ${menuRow('go', 'alarms', 'bell', t('alarm_section'), S.settings.reminders ? t('alarm_minutes', S.settings.alarm.repeatMinutes) : '')}
       ${menuRow('go', 'share', 'users', t('share_title'), S.settings.familyId ? t('share_is_on') : t('share_is_off'))}
       ${menuRow('go', 'meter', 'bluetooth', t('meter_title'), S.settings.meter ? S.settings.meter.name : t('meter_not_paired'))}
@@ -3451,7 +3499,7 @@ function viewMore() {
       ${menuRow('go', 'people', 'heart', t('pp_title'), people().length ? people().map((p) => p.name).join(', ') : t('pp_menu_sub'))}
       ${menuRow('go', 'pantry', 'food', t('pantry_title'), homeFoods() ? t('pantry_count', homeFoods().length) : t('pantry_choose'))}
       ${menuRow('go', 'weight', 'scale', t('btn_weight'), `${t('height')} · ${t('bmi')}`)}
-      ${menuRow('go', 'stock', 'pill', t('stock_title'))}
+      ${menuRow('go', 'stock', 'pill', t('stock_title'), stockWarnText())}
       ${menuRow('go', 'report', 'file', t('btn_report'))}
       ${menuRow('go', 'settings', 'sliders', t('btn_settings'), t('family_section'))}
     </section>`}
@@ -4806,6 +4854,16 @@ const ACTIONS = {
     go('home');
   },
   role_patient: () => startPatientFamily(),
+  tk_slot: (el) => {
+    const d = dayStatus(el.dataset.slot);
+    if (!d.reading && (d.dose || d.slot === 'breakfast')) {
+      readingFlow = { ctx: CTX_FOR_SLOT[d.slot] };
+      return go('reading');
+    }
+    if ((d.dose && !d.doseRec) || d.medsDone < d.meds.length) return go(`take/${d.slot}`);
+    if (d.hasMeal && !d.meal) return go(`ate/${d.slot}`);
+    go(d.dose || d.meds.length ? `take/${d.slot}` : `ate/${d.slot}`);
+  },
   tk_sugar: (el) => {
     const slot = el.dataset.slot;
     readingFlow = { ctx: slot ? CTX_FOR_SLOT[slot] : guessContext() };
