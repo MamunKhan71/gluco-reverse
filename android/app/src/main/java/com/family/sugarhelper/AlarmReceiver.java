@@ -19,10 +19,10 @@ import org.json.JSONObject;
 
 /** Rings an alarm: full-screen alarm screen + looping alarm sound, then schedules the repeat. */
 public class AlarmReceiver extends BroadcastReceiver {
-    static final String CHANNEL = "dose_alarm_v1";
+    static final String CHANNEL = "dose_alarm_soft_v2";
     static final String GENTLE_CHANNEL = "spoken_reminder_v1";
     private static android.media.MediaPlayer gentlePlayer;
-    private static final long[] VIBRATE = {0, 800, 400, 800, 400, 800};
+    private static final long[] VIBRATE = {0, 300, 700, 300}; // two short, soft buzzes
 
     @Override
     public void onReceive(Context c, Intent intent) {
@@ -193,6 +193,7 @@ public class AlarmReceiver extends BroadcastReceiver {
     static void ensureChannel(Context c) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm.getNotificationChannel("dose_alarm_v1") != null) nm.deleteNotificationChannel("dose_alarm_v1"); // the old loud one
         if (nm.getNotificationChannel(CHANNEL) != null) return;
         NotificationChannel ch = new NotificationChannel(CHANNEL, "Dose alarms", NotificationManager.IMPORTANCE_HIGH);
         ch.setDescription("Insulin and sugar-check alarms");
@@ -206,7 +207,32 @@ public class AlarmReceiver extends BroadcastReceiver {
         nm.createNotificationChannel(ch);
     }
 
+    static final String URGENT_CHANNEL = "crisis_alarm_v1";
+
+    /** Dangerous-sugar alarms keep the phone's loud alarm tone. */
+    static void ensureUrgentChannel(Context c) {
+        if (Build.VERSION.SDK_INT < 26) return;
+        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        if (nm.getNotificationChannel(URGENT_CHANNEL) != null) return;
+        NotificationChannel ch = new NotificationChannel(URGENT_CHANNEL, "Dangerous sugar alarms", NotificationManager.IMPORTANCE_HIGH);
+        ch.setSound(urgentSound(), new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+        ch.enableVibration(true);
+        ch.setVibrationPattern(new long[] {0, 800, 400, 800, 400, 800});
+        ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        nm.createNotificationChannel(ch);
+    }
+
     static Uri alarmSound() {
+        return softChime(null);
+    }
+
+    /** Soft three-note bell, like a hospital call bell (res/raw/chime_soft.wav). */
+    static Uri softChime(Context c) {
+        return Uri.parse("android.resource://com.family.sugarhelper/raw/chime_soft");
+    }
+
+    /** The phone's own loud alarm tone: kept for dangerous-sugar emergencies only. */
+    static Uri urgentSound() {
         Uri u = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
         return u != null ? u : RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
     }
@@ -245,7 +271,9 @@ public class AlarmReceiver extends BroadcastReceiver {
         Intent snooze = new Intent(c, AlarmReceiver.class).setAction(AlarmScheduler.ACTION_SNOOZE).putExtra("id", id);
         PendingIntent snoozePi = PendingIntent.getBroadcast(c, id * 100 + 7, snooze, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
-        NotificationCompat.Builder b = new NotificationCompat.Builder(c, CHANNEL)
+        boolean urgent = !item.optString("steps").isEmpty(); // dangerous sugar
+        if (urgent) ensureUrgentChannel(c);
+        NotificationCompat.Builder b = new NotificationCompat.Builder(c, urgent ? URGENT_CHANNEL : CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_drop)
                 .setColor(0xFF5B4DE8)
                 .setContentTitle(title)
@@ -258,7 +286,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setContentIntent(openPi)
                 .setAutoCancel(true)
                 .setOngoing(true)
-                .setSound(alarmSound(), AudioManager.STREAM_ALARM)
+                .setSound(urgent ? urgentSound() : alarmSound(), AudioManager.STREAM_ALARM)
                 .setVibrate(VIBRATE)
 ;
         if (item.has("slot") && !item.optString("takenLabel").isEmpty()) {

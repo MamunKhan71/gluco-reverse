@@ -60,7 +60,12 @@ onSave((json) => {
 });
 S.settings.theme ??= 'light';
 S.settings.reminders ??= true;
-S.settings.alarm ??= { repeatMinutes: 10, maxRepeats: 6, voice: true };
+S.settings.alarm ??= { repeatMinutes: 15, maxRepeats: 3, voice: true };
+if (!S.settings.alarm.soft) {
+  // one time: from the old loud defaults (every 10 min, 6 times) to gentle ones (every 15 min, 3 times)
+  if (S.settings.alarm.repeatMinutes === 10 && S.settings.alarm.maxRepeats === 6) Object.assign(S.settings.alarm, { repeatMinutes: 15, maxRepeats: 3 });
+  S.settings.alarm.soft = true;
+}
 S.settings.textSize ??= 'lg';
 S.settings.background ??= true;
 setLang(S.settings.lang);

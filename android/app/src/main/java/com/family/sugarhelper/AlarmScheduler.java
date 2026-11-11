@@ -55,7 +55,7 @@ final class AlarmScheduler {
     }
 
     static int maxRepeats(Context c) {
-        return prefs(c).getInt("max_repeats", 6);
+        return prefs(c).getInt("max_repeats", 3);
     }
 
     static boolean voice(Context c) {

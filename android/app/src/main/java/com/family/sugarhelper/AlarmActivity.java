@@ -55,13 +55,28 @@ public class AlarmActivity extends Activity {
     private int fallbackRes;
     private String lang = "bn";
     private boolean voiceStarted;
+    private boolean urgent; // dangerous sugar: loud tone; everything else: the soft chime, fading in
+    private float volume = 0.25f;
+    private final Runnable fadeIn = new Runnable() {
+        @Override
+        public void run() {
+            if (player == null) return;
+            volume = Math.min(urgent ? 1f : 0.8f, volume + 0.08f);
+            try {
+                player.setVolume(volume, volume);
+            } catch (Exception ignored) {
+                return;
+            }
+            if (volume < (urgent ? 1f : 0.8f)) handler.postDelayed(this, 2500);
+        }
+    };
 
     // The voice comes first, then the alarm tone; the voice repeats every 25 s over the tone.
     private final Runnable sayAgain = new Runnable() {
         @Override
         public void run() {
             say();
-            handler.postDelayed(this, 25_000);
+            handler.postDelayed(this, 45_000);
         }
     };
 
@@ -91,6 +106,7 @@ public class AlarmActivity extends Activity {
         occurrence = in.getLongExtra("occurrence", System.currentTimeMillis());
         attempt = in.getIntExtra("attempt", 0);
         String steps = in.getStringExtra("steps");
+        urgent = steps != null && !steps.isEmpty();
         if (steps != null && !steps.isEmpty()) {
             setContentView(buildCrisisUi(title, body, steps, in.getStringExtra("contacts"), in.getStringExtra("tone"),
                     in.getStringExtra("openLabel"), in.getStringExtra("snoozeLabel")));
@@ -105,9 +121,10 @@ public class AlarmActivity extends Activity {
             player.setAudioAttributes(new android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_ALARM)
                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
-            player.setDataSource(this, AlarmReceiver.alarmSound());
+            player.setDataSource(this, urgent ? AlarmReceiver.urgentSound() : AlarmReceiver.softChime(this));
             player.setLooping(true);
             player.prepare();
+            if (!urgent) player.setVolume(volume, volume);
             AlarmScheduler.dismissNotification(this, id);
         } catch (Exception e) {
             player = null; // keep the notification's tone instead
@@ -127,11 +144,15 @@ public class AlarmActivity extends Activity {
             startTone();
         }
         // Stop ringing after 2 minutes if nobody answers; the repeat alarm comes back later.
-        handler.postDelayed(this::stopAndFinish, 120_000);
+        handler.postDelayed(this::stopAndFinish, urgent ? 120_000 : 60_000);
     }
 
     private void startTone() {
-        if (player != null && !player.isPlaying() && (voicePlayer == null || !voicePlayer.isPlaying())) player.start();
+        if (player != null && !player.isPlaying() && (voicePlayer == null || !voicePlayer.isPlaying())) {
+            player.start();
+            handler.removeCallbacks(fadeIn);
+            handler.postDelayed(fadeIn, 2500);
+        }
     }
 
     private void pauseTone() {
